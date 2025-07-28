@@ -34,14 +34,17 @@ async function run() {
 
     const db = client.db("medicalDB");
     const usersCollection = db.collection("users");
+    const campsCollection = db.collection("camps");
+
     // routes
-    // POST: User
+
+    // POST: Add a new user
     app.post("/users", async (req, res) => {
       const { email, name, photoURL, role, created_at, last_login } = req.body;
 
       // Basic validation
-      if (!email || !name) {
-        return res.status(400).json({ error: "Email and name are required." });
+      if (!email) {
+        return res.status(400).json({ error: "Email is required." });
       }
 
       const updateDoc = {
@@ -68,9 +71,100 @@ async function run() {
       }
     });
 
+    // GET: Camps list with search, sort, pagination
+    app.get("/camps", async (req, res) => {
+      try {
+        const {
+          search = "",
+          sort = "participantCount",
+          page = "1",
+          limit = "6",
+        } = req.query;
+
+        const pageNum = parseInt(page, 10);
+        const limitNum = parseInt(limit, 10);
+
+        const searchRegex = new RegExp(search, "i");
+
+        const query = {
+          $or: [
+            { campName: { $regex: searchRegex } },
+            { location: { $regex: searchRegex } },
+            { healthcareProfessional: { $regex: searchRegex } },
+          ],
+        };
+
+        let sortOption = {};
+        switch (sort) {
+          case "participantCount":
+            sortOption = { participantCount: -1 };
+            break;
+          case "campFeesAsc":
+            sortOption = { campFees: 1 };
+            break;
+          case "campFeesDesc":
+            sortOption = { campFees: -1 };
+            break;
+          case "alphabetical":
+            sortOption = { campName: 1 };
+            break;
+          default:
+            sortOption = { participantCount: -1 };
+        }
+
+        const total = await campsCollection.countDocuments(query);
+
+        const camps = await campsCollection
+          .find(query)
+          .sort(sortOption)
+          .skip((pageNum - 1) * limitNum)
+          .limit(limitNum)
+          .toArray();
+
+        res.json({
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+          camps,
+        });
+      } catch (error) {
+        console.error("Error fetching camps:", error);
+        res.status(500).json({ error: "Server error" });
+      }
+    });
+
+    // GET: Get camp by ID
+    app.get("/camps/:id", async (req, res) => {
+      try {
+        const campId = req.params.id;
+
+        if (!campId) {
+          return res.status(400).json({ error: "Camp ID is required" });
+        }
+
+        // Query by string _id
+        const camp = await campsCollection.findOne({ _id: campId });
+
+        if (!camp) {
+          return res.status(404).json({ error: "Camp not found" });
+        }
+
+        res.json({ camp });
+      } catch (error) {
+        console.error("Error fetching camp by ID:", error);
+        res.status(500).json({ error: "Server error" });
+      }
+    });
+
+
 
     // Start Express server after DB connection is ready
     const PORT = process.env.PORT || 5000;
+    app.get("/", (req, res) => {
+      res.send("Medical Camp Management System Backend is Running");
+    });
+
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
