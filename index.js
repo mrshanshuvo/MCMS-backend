@@ -241,6 +241,58 @@ async function run() {
       }
     });
 
+    // GET: Get registrations by participant email
+    app.get("/camps-with-registrations/:email", async (req, res) => {
+      try {
+        const participantEmail = req.params.email;
+
+        const results = await campsCollection.aggregate([
+          {
+            $lookup: {
+              from: "registrations",
+              let: { campIdString: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: [{ $toString: "$campId" }, "$$campIdString"] },
+                        { $eq: ["$participantEmail", participantEmail] }
+                      ]
+                    }
+                  }
+                }
+              ],
+              as: "participants"
+            }
+          },
+          {
+            $match: {
+              "participants.0": { $exists: true } // Only include camps where the participant has registered
+            }
+          },
+          {
+            $project: {
+              _id: 1,
+              name: 1,
+              dateTime: 1,
+              location: 1,
+              fees: 1,
+              healthcareProfessional: 1,
+              participants: 1
+            }
+          }
+        ]).toArray();
+
+        res.json(results);
+      } catch (error) {
+        console.error("Error fetching camps by email:", error);
+        res.status(500).json({
+          error: "Failed to fetch camps data",
+          details: error.message
+        });
+      }
+    });
 
     // ======================
     // CAMP ROUTES
