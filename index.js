@@ -39,6 +39,7 @@ async function run() {
     // ======================
     // MIDDLEWARES
     // ======================
+
     // Verify Firebase token
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -73,7 +74,6 @@ async function run() {
       }
       next();
     };
-
 
     // ======================
     // USER ROUTES
@@ -138,6 +138,50 @@ async function run() {
       }
     });
 
+    // GET: Get user by email
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      try {
+        const user = await usersCollection.findOne({ email });
+        if (user) {
+          res.json(user);
+        } else {
+          res.status(404).json({ error: "User not found" });
+        }
+      } catch (error) {
+        console.error("Error fetching user:", error);
+        res.status(500).json({ error: "Failed to fetch user" });
+      }
+    });
+
+    // PUT: Update user
+    app.put("/users/:email", verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+      const { name, photoURL, role } = req.body;
+
+      const updateFields = {};
+      if (name !== undefined) updateFields.name = name;
+      if (photoURL !== undefined) updateFields.photoURL = photoURL;
+      if (role !== undefined) updateFields.role = role;
+
+      try {
+        const updateDoc = { $set: updateFields };
+        const result = await usersCollection.updateOne({ email }, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Optionally fetch updated document
+        const updatedUser = await usersCollection.findOne({ email });
+
+        res.json(updatedUser);
+      } catch (error) {
+        console.error("Error updating user:", error);
+        res.status(500).json({ error: "Failed to update user" });
+      }
+    });
+
     // GET: Get user role by email
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
@@ -156,7 +200,6 @@ async function run() {
         res.status(500).json({ error: "Failed to fetch user role" });
       }
     });
-
 
     // ======================
     // PARTICIPANT ROUTES
