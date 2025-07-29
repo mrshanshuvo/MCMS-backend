@@ -39,6 +39,7 @@ async function run() {
     // ======================
     // MIDDLEWARES
     // ======================
+    // Verify Firebase token
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
       if (!authHeader) {
@@ -55,6 +56,7 @@ async function run() {
       }
     };
 
+    // Verify if the user is an organizer
     const verifyOrganizer = async (req, res, next) => {
       const user = await usersCollection.findOne({ email: req.user.email });
       if (user?.role !== "organizer") {
@@ -63,6 +65,7 @@ async function run() {
       next();
     };
 
+    // Verify if the user is a participant
     const verifyParticipant = async (req, res, next) => {
       const user = await usersCollection.findOne({ email: req.user.email });
       if (user?.role !== "participant") {
@@ -109,6 +112,32 @@ async function run() {
       }
     });
 
+    // PATCH: Update user's last_login
+    app.patch("/users/:email", verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+      const { last_login } = req.body;
+
+      if (!last_login) {
+        return res.status(400).json({ error: "Missing last_login value." });
+      }
+
+      try {
+        const result = await usersCollection.updateOne(
+          { email },
+          { $set: { last_login } }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({ success: true, message: "Last login updated", result });
+      } catch (error) {
+        console.error("Error updating last_login:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
     // GET: Get user role by email
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
@@ -127,6 +156,95 @@ async function run() {
         res.status(500).json({ error: "Failed to fetch user role" });
       }
     });
+
+
+    // ======================
+    // PARTICIPANT ROUTES
+    // ======================
+
+    // POST: Register for a camp (Participant only)
+    app.post("/registrations", verifyFBToken, verifyParticipant, async (req, res) => {
+      try {
+        const { campId, participantName } = req.body;
+
+        if (!campId) {
+          return res.status(400).json({ error: "campId is required" });
+        }
+
+        const campObjectId = new ObjectId(campId);
+
+        // Prevent duplicate registration by querying with ObjectId
+        const existing = await registrationsCollection.findOne({
+          campId: campObjectId,
+          participantEmail: req.user.email,
+        });
+
+        if (existing) {
+          return res.status(400).json({ error: "Already registered for this camp" });
+        }
+
+        const newRegistration = {
+          campId: campObjectId,
+          participantEmail: req.user.email,
+          participantName: participantName || req.user.name || "Anonymous",
+          registrationDate: new Date(),
+          paymentStatus: "Unpaid",
+        };
+
+        const result = await registrationsCollection.insertOne(newRegistration);
+
+        res.status(201).json({ success: true, registrationId: result.insertedId });
+      } catch (error) {
+        console.error("Error creating registration:", error);
+        res.status(500).json({ error: "Failed to create registration" });
+      }
+    });
+
+    // Patch: Update participant count for a camp
+    app.patch("/camps/:id/increment", verifyFBToken, verifyParticipant, async (req, res) => {
+      try {
+        const campId = req.params.id;
+
+        const result = await campsCollection.updateOne(
+          { _id: campId },
+          { $inc: { participantCount: 1 } }
+        );
+
+        if (result.modifiedCount > 0) {
+          res.json({ success: true, message: "Participant count incremented" });
+        } else {
+          res.status(404).json({ success: false, message: "Camp not found" });
+        }
+      } catch (error) {
+        console.error("Error updating participant count:", error);
+        res.status(500).json({ error: "Failed to update participant count" });
+      }
+    });
+
+
+    app.get("/registrations/check", verifyFBToken, async (req, res) => {
+      const { campId } = req.query;
+      const email = req.user.email;
+
+      // Try both string and ObjectId versions
+      const registration = await registrationsCollection.findOne({
+        $or: [
+          // { campId: campId, participantEmail: email },
+          { campId: new ObjectId(campId), participantEmail: email }
+        ]
+      });
+
+      if (registration) {
+        return res.json({ registered: true });
+      } else {
+        return res.json({ registered: false });
+      }
+    });
+
+
+    // ======================
+    // CAMP ROUTES
+    // ======================
 
     // GET: Camps list with search, sort, pagination
     app.get("/camps", async (req, res) => {
