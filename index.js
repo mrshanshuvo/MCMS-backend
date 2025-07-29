@@ -3,23 +3,21 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
-
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Firebase Admin Setup
 const decodedBase64Key = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8');
 const serviceAccount = JSON.parse(decodedBase64Key);
-
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
+// MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ezlz7xu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -31,15 +29,55 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     await client.connect();
-
     const db = client.db("medicalDB");
     const usersCollection = db.collection("users");
     const campsCollection = db.collection("camps");
+    const registrationsCollection = db.collection("registrations");
+    const paymentsCollection = db.collection("payments");
+    const feedbackCollection = db.collection("feedback");
 
-    // routes
+    // ======================
+    // MIDDLEWARES
+    // ======================
+    const verifyFBToken = async (req, res, next) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).json({ success: false, message: "Unauthorized" });
+      }
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.user = decoded;
+        next();
+      } catch (error) {
+        console.error("Token verification failed:", error);
+        return res.status(401).json({ success: false, message: "Unauthorized" });
+      }
+    };
+
+    const verifyOrganizer = async (req, res, next) => {
+      const user = await usersCollection.findOne({ email: req.user.email });
+      if (user?.role !== "organizer") {
+        return res.status(403).json({ success: false, message: "Organizer access required" });
+      }
+      next();
+    };
+
+    const verifyParticipant = async (req, res, next) => {
+      const user = await usersCollection.findOne({ email: req.user.email });
+      if (user?.role !== "participant") {
+        return res.status(403).json({ success: false, message: "Participant access required" });
+      }
+      next();
+    };
+
+
+    // ======================
+    // USER ROUTES
+    // ======================
 
     // POST: Add a new user
-    app.post("/users", async (req, res) => {
+    app.post("/users", verifyFBToken, async (req, res) => {
       const { email, name, photoURL, role, created_at, last_login } = req.body;
 
       // Basic validation
@@ -68,6 +106,25 @@ async function run() {
         res.send(result);
       } catch (error) {
         res.status(500).json({ error: "Failed to upsert user." });
+      }
+    });
+
+    // GET: Get user role by email
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+
+      try {
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Default to "participant" if role not set
+        res.json({ role: user.role || "participant" });
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+        res.status(500).json({ error: "Failed to fetch user role" });
       }
     });
 
@@ -157,7 +214,72 @@ async function run() {
       }
     });
 
+    // POST: Add a new camp (Organizer only)
+    app.post("/camps", verifyFBToken, verifyOrganizer, async (req, res) => {
+      try {
+        const newCamp = req.body;
+        newCamp.organizerEmail = req.user.email;
+        // Add default values
+        newCamp.participantCount = 0;
+        newCamp.createdAt = new Date();
 
+        const result = await campsCollection.insertOne(newCamp);
+        res.status(201).json({ success: true, message: "Camp added", campId: result.insertedId });
+      } catch (error) {
+        console.error("Error adding camp:", error);
+        res.status(500).json({ success: false, error: "Failed to add camp" });
+      }
+    });
+
+    // GET: Get camps by organizer email
+    app.get("/organizer/camps", verifyFBToken, verifyOrganizer, async (req, res) => {
+      try {
+        const organizerEmail = req.user.email;
+        const organizerCamps = await campsCollection.find({ organizerEmail }).toArray();
+        res.json(organizerCamps);
+      } catch (error) {
+        console.error("Error fetching organizer camps:", error);
+        res.status(500).json({ error: "Failed to fetch organizer camps" });
+      }
+    });
+
+    // PATCH: Update camp by ID (Organizer only)
+    app.patch("/camps/:id", verifyFBToken, verifyOrganizer, async (req, res) => {
+      try {
+        const campId = req.params.id;
+        const updatedCamp = req.body;
+
+        const result = await campsCollection.updateOne(
+          { _id: new ObjectId(campId) },
+          { $set: updatedCamp }
+        );
+
+        if (result.modifiedCount > 0) {
+          res.json({ success: true });
+        } else {
+          res.json({ success: false, message: "Camp not found or no changes" });
+        }
+      } catch (error) {
+        console.error("Error updating camp:", error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // DELETE: Delete camp by ID (Organizer only)
+    app.delete('/camps/:id', verifyFBToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const result = await campsCollection.deleteOne({
+          _id: new ObjectId(id),
+          organizerEmail: req.user.email,
+        });
+
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to delete camp' });
+      }
+    });
 
     // Start Express server after DB connection is ready
     const PORT = process.env.PORT || 5000;
