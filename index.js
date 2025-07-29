@@ -456,11 +456,28 @@ async function run() {
       }
     });
 
-    // PATCH: Update camp by ID (Organizer only)
-    app.patch("/camps/:id", verifyFBToken, verifyOrganizer, async (req, res) => {
+    // ======================
+    // UPDATED CAMP ROUTES
+    // ======================
+
+    // PATCH: Update camp by ID (Organizer only) - using expected endpoint
+    app.patch("/update-camp/:campId", verifyFBToken, verifyOrganizer, async (req, res) => {
       try {
-        const campId = req.params.id;
+        const campId = req.params.campId;
         const updatedCamp = req.body;
+
+        // Verify the camp belongs to the organizer
+        const camp = await campsCollection.findOne({
+          _id: new ObjectId(campId),
+          organizerEmail: req.user.email
+        });
+
+        if (!camp) {
+          return res.status(404).json({
+            success: false,
+            message: "Camp not found or not owned by organizer"
+          });
+        }
 
         const result = await campsCollection.updateOne(
           { _id: new ObjectId(campId) },
@@ -478,19 +495,206 @@ async function run() {
       }
     });
 
-    // DELETE: Delete camp by ID (Organizer only)
-    app.delete('/camps/:id', verifyFBToken, async (req, res) => {
+    // DELETE: Delete camp by ID (Organizer only) - using expected endpoint and adding ownership check
+    app.delete('/delete-camp/:campId', verifyFBToken, verifyOrganizer, async (req, res) => {
       try {
-        const id = req.params.id;
+        const campId = req.params.campId;
 
-        const result = await campsCollection.deleteOne({
-          _id: new ObjectId(id),
-          organizerEmail: req.user.email,
+        // First verify the camp belongs to this organizer
+        const camp = await campsCollection.findOne({
+          _id: new ObjectId(campId),
+          organizerEmail: req.user.email
         });
 
-        res.send(result);
+        if (!camp) {
+          return res.status(404).json({
+            success: false,
+            message: "Camp not found or not owned by organizer"
+          });
+        }
+
+        // Delete the camp
+        const result = await campsCollection.deleteOne({
+          _id: new ObjectId(campId)
+        });
+
+        if (result.deletedCount > 0) {
+          // Also delete related registrations
+          await registrationsCollection.deleteMany({
+            campId: new ObjectId(campId)
+          });
+
+          res.json({
+            success: true,
+            deletedCount: result.deletedCount
+          });
+        } else {
+          res.status(404).json({
+            success: false,
+            message: "Camp not found"
+          });
+        }
       } catch (error) {
-        res.status(500).send({ error: 'Failed to delete camp' });
+        console.error("Error deleting camp:", error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to delete camp',
+          details: error.message
+        });
+      }
+    });
+
+    // ======================
+    // PAYMENT ROUTES
+    // ======================
+
+    // POST: Create payment intent
+    // Example in Node.js with Express
+    // GET /payments?email=someone@example.com
+    app.get("/payments", verifyFBToken, async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        if (!email) {
+          return res.status(400).send({
+            success: false,
+            message: "Email query parameter required",
+          });
+        }
+
+        if (req.user.email !== email) {
+          return res.status(403).send({
+            success: false,
+            message: "Unauthorized",
+          });
+        }
+
+        const payments = await paymentsCollection
+          .find({ participantEmail: email })
+          .sort({ payment_time: -1 })
+          .toArray();
+
+        res.send({ success: true, data: payments });
+      } catch (error) {
+        console.error("Error fetching payments:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch payment history",
+        });
+      }
+    });
+
+
+
+
+    app.post("/create-payment-intent", verifyFBToken, verifyParticipant, async (req, res) => {
+      const { amount, campId } = req.body;
+
+      try {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount * 100, // amount in cents
+          currency: "usd",
+          metadata: { campId },
+        });
+
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      } catch (err) {
+        console.error("Error creating payment intent:", err);
+        res.status(500).send({ error: err.message });
+      }
+    });
+
+    // POST: Save payment and update registration status
+    app.post("/payments", verifyFBToken, async (req, res) => {
+      const session = client.startSession();
+
+      try {
+        const {
+          campId,
+          registrationId,
+          transactionId,
+          amount,
+          paymentMethod
+        } = req.body;
+
+        // Validate required fields
+        if (!campId || !registrationId || !transactionId || !amount) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing required payment information"
+          });
+        }
+
+        // Verify registration belongs to user
+        const registration = await registrationsCollection.findOne({
+          _id: new ObjectId(registrationId),
+          participantEmail: req.user.email
+        }, { session });
+
+        if (!registration) {
+          return res.status(404).json({
+            success: false,
+            message: "Registration not found or not owned by user"
+          });
+        }
+
+        // Check for duplicate payment
+        const existingPayment = await paymentsCollection.findOne({
+          registrationId: new ObjectId(registrationId)
+        }, { session });
+
+        if (existingPayment) {
+          return res.status(400).json({
+            success: false,
+            message: "Payment already processed for this registration"
+          });
+        }
+
+        await session.withTransaction(async () => {
+          // 1. Update the registration's payment status
+          const registrationUpdate = await registrationsCollection.updateOne(
+            { _id: new ObjectId(registrationId) },
+            { $set: { paymentStatus: "Paid" } },
+            { session }
+          );
+
+          // 2. Create payment record
+          const paymentRecord = {
+            campId: new ObjectId(campId),
+            registrationId: new ObjectId(registrationId),
+            participantEmail: req.user.email,
+            transactionId,
+            amount: amount / 100, // Convert back to dollars
+            paymentMethod,
+            paymentDate: new Date(),
+            status: "Completed"
+          };
+
+          const paymentInsert = await paymentsCollection.insertOne(
+            paymentRecord,
+            { session }
+          );
+        });
+
+        res.json({
+          success: true,
+          message: "Payment processed successfully"
+        });
+      } catch (error) {
+        console.error("Payment processing error:", {
+          error: error.message,
+          stack: error.stack,
+          requestBody: req.body,
+          user: req.user.email
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to process payment"
+        });
+      } finally {
+        await session.endSession();
       }
     });
 
