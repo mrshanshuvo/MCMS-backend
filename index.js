@@ -41,9 +41,9 @@ async function run() {
 
 
 
-    // ======================
-    // MIDDLEWARES
-    // ======================
+    // =====================
+    // MIDDLEWARES START >>
+    // =====================
 
     // Verify Firebase token
     const verifyFBToken = async (req, res, next) => {
@@ -80,8 +80,12 @@ async function run() {
       next();
     };
 
+    // =====================
+    // MIDDLEWARES END   <<
+    // =====================
+
     // ======================
-    // USER ROUTES
+    // USER ROUTES START >>
     // ======================
 
     // POST: Add a new user
@@ -207,8 +211,12 @@ async function run() {
     });
 
     // ======================
-    // PARTICIPANT ROUTES
+    // USER ROUTES END   <<
     // ======================
+
+    // ===========================
+    // PARTICIPANT ROUTES START >>
+    // ===========================
 
     // POST: Register for a camp (Participant only)
     app.post("/registrations", verifyFBToken, verifyParticipant, async (req, res) => {
@@ -342,8 +350,12 @@ async function run() {
       }
     });
 
+    // ==========================
+    // PARTICIPANT ROUTES END <<
+    // ==========================
+
     // ======================
-    // CAMP ROUTES
+    // CAMP ROUTES START >>
     // ======================
 
     // GET: Camps list with search, sort, pagination
@@ -462,8 +474,12 @@ async function run() {
     });
 
     // ======================
-    // UPDATED CAMP ROUTES
+    // CAMP ROUTES END <<
     // ======================
+
+    // =========================================
+    // UPDATED CAMP ROUTES (ORGANIZER) START >>
+    // =========================================
 
     // PATCH: Update camp by ID (Organizer only) - using expected endpoint
     app.patch("/update-camp/:campId", verifyFBToken, verifyOrganizer, async (req, res) => {
@@ -549,12 +565,14 @@ async function run() {
       }
     });
 
-    // ======================
-    // PAYMENT ROUTES
-    // ======================
+    // =========================================
+    // UPDATED CAMP ROUTES (ORGANIZER) END   <<
+    // =========================================
 
-    // POST: Create payment intent
-    // Example in Node.js with Express
+    // ========================
+    // PAYMENT ROUTES START >>
+    // ========================
+
     // GET /payments?email=someone@example.com
     app.get("/payments", verifyFBToken, async (req, res) => {
       try {
@@ -588,9 +606,6 @@ async function run() {
         });
       }
     });
-
-
-
 
     app.post("/create-payment-intent", verifyFBToken, verifyParticipant, async (req, res) => {
       const { amount, campId } = req.body;
@@ -703,10 +718,14 @@ async function run() {
       }
     });
 
+    // ========================
+    // PAYMENT ROUTES END   <<
+    // ========================
 
-    // ======================
-    // OTHER PUBLIC ROUTES
-    // ======================
+    // ==============================
+    // STATIC PUBLIC ROUTES START >>
+    // ==============================
+
     // GET /successStories
     app.get("/successStories", async (req, res) => {
       try {
@@ -748,6 +767,10 @@ async function run() {
         });
       }
     })
+
+    // ============================
+    // STATIC PUBLIC ROUTES END <<
+    // ============================
 
     // Start Express server after DB connection is ready
     const PORT = process.env.PORT || 5000;
