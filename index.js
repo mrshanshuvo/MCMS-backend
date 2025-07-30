@@ -28,13 +28,18 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const db = client.db("medicalDB");
     const usersCollection = db.collection("users");
     const campsCollection = db.collection("camps");
     const registrationsCollection = db.collection("registrations");
     const paymentsCollection = db.collection("payments");
     const feedbackCollection = db.collection("feedback");
+    const successStoriesCollection = db.collection("success_stories");
+    const blogCollection = db.collection("blogs");
+    const faqCollection = db.collection("faq");
+
+
 
     // ======================
     // MIDDLEWARES
@@ -697,6 +702,52 @@ async function run() {
         await session.endSession();
       }
     });
+
+
+    // ======================
+    // OTHER PUBLIC ROUTES
+    // ======================
+    // GET /successStories
+    app.get("/successStories", async (req, res) => {
+      try {
+        const successStories = await successStoriesCollection.find().toArray();
+        res.send({ success: true, data: successStories });
+      } catch (error) {
+        console.error("Error fetching success stories:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch success stories",
+        });
+      }
+    })
+
+    // GET /faq
+    app.get("/faqs", async (req, res) => {
+      try {
+        const faq = await faqCollection.find().toArray();
+        res.send({ success: true, data: faq });
+      } catch (error) {
+        console.error("Error fetching faq:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch faq",
+        });
+      }
+    })
+
+    // GET /blogs
+    app.get("/blogs", async (req, res) => {
+      try {
+        const blog = await blogCollection.find().toArray();
+        res.send({ success: true, data: blog });
+      } catch (error) {
+        console.error("Error fetching blog:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch blog",
+        });
+      }
+    })
 
     // Start Express server after DB connection is ready
     const PORT = process.env.PORT || 5000;
