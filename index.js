@@ -28,7 +28,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // await client.connect();
     const db = client.db("medicalDB");
     const usersCollection = db.collection("users");
     const campsCollection = db.collection("camps");
@@ -39,13 +38,17 @@ async function run() {
     const blogCollection = db.collection("blogs");
     const faqCollection = db.collection("faq");
 
-
+    // Add this after your collection declarations in the run() function
+    await registrationsCollection.createIndex({ participantEmail: 1 });
+    await registrationsCollection.createIndex({ campId: 1 });
+    await registrationsCollection.createIndex({ transactionId: 1 }, { unique: true });
+    await feedbackCollection.createIndex({ campId: 1 });
+    await feedbackCollection.createIndex({ participantEmail: 1 });
 
     // =====================
     // MIDDLEWARES START >>
     // =====================
 
-    // Verify Firebase token
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
       if (!authHeader) {
@@ -62,7 +65,6 @@ async function run() {
       }
     };
 
-    // Verify if the user is an organizer
     const verifyOrganizer = async (req, res, next) => {
       const user = await usersCollection.findOne({ email: req.user.email });
       if (user?.role !== "organizer") {
@@ -71,7 +73,6 @@ async function run() {
       next();
     };
 
-    // Verify if the user is a participant
     const verifyParticipant = async (req, res, next) => {
       const user = await usersCollection.findOne({ email: req.user.email });
       if (user?.role !== "participant") {
@@ -166,12 +167,14 @@ async function run() {
     // PUT: Update user
     app.put("/users/:email", verifyFBToken, async (req, res) => {
       const email = req.params.email;
-      const { name, photoURL, role } = req.body;
+      const { name, photoURL, role, phone, address } = req.body;
 
       const updateFields = {};
       if (name !== undefined) updateFields.name = name;
       if (photoURL !== undefined) updateFields.photoURL = photoURL;
       if (role !== undefined) updateFields.role = role;
+      if (phone !== undefined) updateFields.phone = phone;
+      if (address !== undefined) updateFields.address = address;
 
       try {
         const updateDoc = { $set: updateFields };
@@ -181,7 +184,6 @@ async function run() {
           return res.status(404).json({ error: "User not found" });
         }
 
-        // Optionally fetch updated document
         const updatedUser = await usersCollection.findOne({ email });
 
         res.json(updatedUser);
@@ -194,7 +196,6 @@ async function run() {
     // GET: Get user role by email
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
-
       try {
         const user = await usersCollection.findOne({ email });
 
@@ -218,115 +219,142 @@ async function run() {
     // PARTICIPANT ROUTES START >>
     // ===========================
 
-    // POST: Register for a camp (Participant only)
+    // POST: Register for a camp
     app.post("/registrations", verifyFBToken, verifyParticipant, async (req, res) => {
       try {
-        const { campId, participantName } = req.body;
+        const {
+          campId,
+          participantName,
+          participantEmail,
+          age,
+          phoneNumber,
+          gender,
+          emergencyContact
+        } = req.body;
 
-        if (!campId) {
-          return res.status(400).json({ error: "campId is required" });
+        // Validate required fields
+        if (!campId || !participantEmail || !age || !phoneNumber || !gender || !emergencyContact) {
+          return res.status(400).json({ error: "Missing required fields" });
         }
 
-        const campObjectId = new ObjectId(campId);
+        // Check if campId is valid
+        if (!ObjectId.isValid(campId)) {
+          return res.status(400).json({ error: "Invalid campId format" });
+        }
 
-        // Prevent duplicate registration by querying with ObjectId
+        // Check for existing registration
         const existing = await registrationsCollection.findOne({
-          campId: campObjectId,
-          participantEmail: req.user.email,
+          campId: new ObjectId(campId),
+          participantEmail
         });
 
         if (existing) {
           return res.status(400).json({ error: "Already registered for this camp" });
         }
 
+        // Create new registration with a unique transactionId
         const newRegistration = {
-          campId: campObjectId,
-          participantEmail: req.user.email,
-          participantName: participantName || req.user.name || "Anonymous",
+          campId: new ObjectId(campId),
+          participantEmail,
+          participantName: participantName || "Anonymous",
+          age: parseInt(age),
+          phoneNumber,
+          gender,
+          emergencyContact,
           registrationDate: new Date(),
           paymentStatus: "Unpaid",
+          confirmationStatus: "Pending",
+          transactionId: new ObjectId() // Generate a unique ID
         };
 
         const result = await registrationsCollection.insertOne(newRegistration);
-
         res.status(201).json({ success: true, registrationId: result.insertedId });
       } catch (error) {
-        console.error("Error creating registration:", error);
-        res.status(500).json({ error: "Failed to create registration" });
-      }
-    });
-
-    // Patch: Update participant count for a camp
-    app.patch("/camps/:id/increment", verifyFBToken, verifyParticipant, async (req, res) => {
-      try {
-        const campId = req.params.id;
-
-        const result = await campsCollection.updateOne(
-          { _id: campId },
-          { $inc: { participantCount: 1 } }
-        );
-
-        if (result.modifiedCount > 0) {
-          res.json({ success: true, message: "Participant count incremented" });
-        } else {
-          res.status(404).json({ success: false, message: "Camp not found" });
+        console.error("Registration Error:", error);
+        if (error.code === 11000) {
+          return res.status(400).json({ error: "Duplicate registration detected" });
         }
-      } catch (error) {
-        console.error("Error updating participant count:", error);
-        res.status(500).json({ error: "Failed to update participant count" });
+        res.status(500).json({ error: "Registration failed", details: error.message });
       }
     });
-
-
+    // GET: Check if registered for camp
     app.get("/registrations/check", verifyFBToken, async (req, res) => {
-      const { campId } = req.query;
-      const email = req.user.email;
-
-      // Try both string and ObjectId versions
-      const registration = await registrationsCollection.findOne({
-        $or: [
-          // { campId: campId, participantEmail: email },
-          { campId: new ObjectId(campId), participantEmail: email }
-        ]
-      });
-
-      if (registration) {
-        return res.json({ registered: true });
-      } else {
-        return res.json({ registered: false });
+      try {
+        const { campId } = req.query;
+        const registration = await registrationsCollection.findOne({
+          campId: new ObjectId(campId),
+          participantEmail: req.user.email
+        });
+        res.json({ registered: !!registration });
+      } catch (error) {
+        console.error("Error checking registration:", error);
+        res.status(500).json({ error: "Failed to check registration" });
       }
     });
 
-    // GET: Get registrations by participant email
-    app.get("/camps-with-registrations/:email", async (req, res) => {
+    // GET: Get registered camps with details
+    app.get("/camps-with-registrations/:email", verifyFBToken, verifyParticipant, async (req, res) => {
       try {
-        const participantEmail = req.params.email;
-
         const results = await campsCollection.aggregate([
           {
             $lookup: {
               from: "registrations",
-              let: { campIdString: "$_id" },
+              let: { campIdObj: "$_id" },
               pipeline: [
                 {
                   $match: {
                     $expr: {
                       $and: [
-                        { $eq: [{ $toString: "$campId" }, "$$campIdString"] },
-                        { $eq: ["$participantEmail", participantEmail] }
+                        { $eq: ["$campId", "$$campIdObj"] },
+                        { $eq: ["$participantEmail", req.params.email] }
                       ]
                     }
+                  }
+                },
+                {
+                  $project: {
+                    _id: 1,
+                    participantName: 1,
+                    paymentStatus: 1,
+                    confirmationStatus: 1,
+                    registrationDate: 1
                   }
                 }
               ],
               as: "participants"
             }
           },
+          // Only camps where user registered
+          { $match: { "participants.0": { $exists: true } } },
+
+          // New lookup to check if feedback exists for this camp and user
           {
-            $match: {
-              "participants.0": { $exists: true } // Only include camps where the participant has registered
+            $lookup: {
+              from: "feedback",
+              let: { campIdObj: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ["$campId", "$$campIdObj"] },
+                        { $eq: ["$participantEmail", req.params.email] }
+                      ]
+                    }
+                  }
+                },
+                { $limit: 1 } // only need to know if exists
+              ],
+              as: "userFeedback"
             }
           },
+
+          {
+            $addFields: {
+              hasFeedback: { $gt: [{ $size: "$userFeedback" }, 0] }
+            }
+          },
+
           {
             $project: {
               _id: 1,
@@ -335,24 +363,325 @@ async function run() {
               location: 1,
               fees: 1,
               healthcareProfessional: 1,
-              participants: 1
+              participants: 1,
+              hasFeedback: 1
             }
           }
         ]).toArray();
 
         res.json(results);
       } catch (error) {
-        console.error("Error fetching camps by email:", error);
-        res.status(500).json({
-          error: "Failed to fetch camps data",
-          details: error.message
-        });
+        console.error("Error fetching camps:", error);
+        res.status(500).json({ error: "Failed to fetch camps data" });
+      }
+    });
+
+
+    // PATCH: Increment participant count for a camp
+    app.patch("/camps/:id/increment", verifyFBToken, async (req, res) => {
+      try {
+        const campId = req.params.id;
+
+        if (!ObjectId.isValid(campId)) {
+          return res.status(400).json({ error: "Invalid camp ID format" });
+        }
+
+        const result = await campsCollection.updateOne(
+          { _id: new ObjectId(campId) },
+          { $inc: { participantCount: 1 } }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).json({ error: "Camp not found or count not updated" });
+        }
+
+        res.status(200).json({ success: true });
+      } catch (error) {
+        console.error("Increment Error:", error);
+        res.status(500).json({ error: "Failed to increment count" });
       }
     });
 
     // ==========================
     // PARTICIPANT ROUTES END <<
     // ==========================
+
+    // ========================
+    // PAYMENT ROUTES START >>
+    // ========================
+
+    // POST: Create payment intent
+    app.post("/create-payment-intent", verifyFBToken, verifyParticipant, async (req, res) => {
+      try {
+        const { amount, campId } = req.body;
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount * 100,
+          currency: "usd",
+          metadata: { campId, participantEmail: req.user.email }
+        });
+        res.json({ clientSecret: paymentIntent.client_secret });
+      } catch (error) {
+        console.error("Payment intent error:", error);
+        res.status(500).json({ error: "Failed to create payment intent" });
+      }
+    });
+
+    // POST: Process payment
+    app.post("/payments", verifyFBToken, async (req, res) => {
+      const session = client.startSession();
+      try {
+        const { campId, registrationId, transactionId, amount, paymentMethod } = req.body;
+
+        await session.withTransaction(async () => {
+          // Verify registration
+          const registration = await registrationsCollection.findOne({
+            _id: new ObjectId(registrationId),
+            participantEmail: req.user.email
+          }, { session });
+
+          if (!registration) throw new Error("Registration not found");
+          if (registration.paymentStatus === "Paid") throw new Error("Payment already processed");
+
+          // Update registration
+          await registrationsCollection.updateOne(
+            { _id: registration._id },
+            {
+              $set: {
+                paymentStatus: "Paid",
+                confirmationStatus: "Confirmed",
+                transactionId
+              }
+            },
+            { session }
+          );
+
+          // Create payment record
+          await paymentsCollection.insertOne({
+            campId: new ObjectId(campId),
+            registrationId: new ObjectId(registrationId),
+            participantEmail: req.user.email,
+            transactionId,
+            amount: amount / 100,
+            paymentMethod,
+            paymentDate: new Date(),
+            status: "Completed"
+          }, { session });
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Payment processing error:", error);
+        res.status(500).json({ error: error.message });
+      } finally {
+        await session.endSession();
+      }
+    });
+
+    // GET: Payment history
+    app.get("/payments", verifyFBToken, async (req, res) => {
+      try {
+        const payments = await paymentsCollection.aggregate([
+          { $match: { participantEmail: req.user.email } },
+          {
+            $lookup: {
+              from: "camps",
+              localField: "campId",
+              foreignField: "_id",
+              as: "camp"
+            }
+          },
+          { $unwind: "$camp" },
+          {
+            $project: {
+              _id: 1,
+              amount: 1,
+              paymentDate: 1,
+              paymentMethod: 1,
+              status: 1,
+              transactionId: 1,
+              campName: "$camp.name"
+            }
+          },
+          { $sort: { paymentDate: -1 } }
+        ]).toArray();
+
+        res.json(payments);
+      } catch (error) {
+        console.error("Error fetching payments:", error);
+        res.status(500).json({ error: "Failed to fetch payment history" });
+      }
+    });
+
+    // GET: Payment history by email query param
+    app.get("/paymentsByEmail", verifyFBToken, async (req, res) => {
+      try {
+        const email = req.query.email;
+        console.log("email", email);
+        console.log("req.user", req.user);
+
+
+        if (req.user.email !== email)
+          return res.status(403).send({
+            success: false,
+            message: "Unauthorized",
+          });
+
+        const filter = email ? { participantEmail: email } : {};
+
+
+        const payments = await paymentsCollection
+          .find(filter)
+          .sort({ payment_time: -1 }) // latest first
+          .toArray();
+
+        res.send({ success: true, data: payments });
+      } catch (error) {
+        console.error("Error fetching payments:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch payment history" });
+      }
+    });
+
+
+    // Stripe webhook
+    app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+      const sig = req.headers['stripe-signature'];
+      let event;
+
+      try {
+        event = stripe.webhooks.constructEvent(
+          req.body,
+          sig,
+          process.env.STRIPE_WEBHOOK_SECRET
+        );
+      } catch (err) {
+        console.error('Webhook error:', err);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+      }
+
+      if (event.type === 'payment_intent.succeeded') {
+        const paymentIntent = event.data.object;
+        const { campId, participantEmail } = paymentIntent.metadata;
+
+        try {
+          await registrationsCollection.updateOne(
+            {
+              campId: new ObjectId(campId),
+              participantEmail,
+              transactionId: paymentIntent.id
+            },
+            {
+              $set: {
+                paymentStatus: "Paid",
+                confirmationStatus: "Confirmed"
+              }
+            }
+          );
+          console.log(`Updated registration for payment ${paymentIntent.id}`);
+        } catch (error) {
+          console.error('Webhook update error:', error);
+        }
+      }
+
+      res.json({ received: true });
+    });
+
+    // ========================
+    // PAYMENT ROUTES END   <<
+    // ========================
+
+    // ======================
+    // FEEDBACK ROUTES START >>
+    // ======================
+
+    // POST: Submit feedback
+    app.post('/feedback', verifyFBToken, async (req, res) => {
+      try {
+        const { campId, rating, feedback, name, photoURL } = req.body;
+
+        if (rating < 1 || rating > 5) {
+          return res.status(400).json({ error: "Rating must be between 1-5" });
+        }
+
+        // Verify camp attendance
+        const registration = await registrationsCollection.findOne({
+          campId: new ObjectId(campId),
+          participantEmail: req.user.email,
+          paymentStatus: "Paid"
+        });
+
+        if (!registration) {
+          return res.status(403).json({ error: "You must attend the camp to provide feedback" });
+        }
+
+        // Check for existing feedback
+        const existing = await feedbackCollection.findOne({
+          campId: new ObjectId(campId),
+          participantEmail: req.user.email
+        });
+
+        if (existing) {
+          return res.status(400).json({ error: "Feedback already submitted" });
+        }
+
+        // Create feedback
+        await feedbackCollection.insertOne({
+          campId: new ObjectId(campId),
+          participantEmail: req.user.email,
+          participantName: name || "Anonymous",
+          participantPhotoURL: photoURL,
+          rating,
+          feedback,
+          date: new Date()
+        });
+
+        res.status(201).json({ success: true });
+      } catch (error) {
+        console.error("Feedback error:", error);
+        res.status(500).json({ error: "Failed to submit feedback" });
+      }
+    });
+
+    // GET: Recent feedback for home page
+    app.get('/feedback', async (req, res) => {
+      try {
+        const limit = parseInt(req.query.limit) || 5;
+        const feedback = await feedbackCollection.aggregate([
+          {
+            $lookup: {
+              from: "camps",
+              localField: "campId",
+              foreignField: "_id",
+              as: "camp"
+            }
+          },
+          { $unwind: "$camp" },
+          {
+            $project: {
+              _id: 1,
+              rating: 1,
+              feedback: 1,
+              date: 1,
+              participantName: 1,
+              participantPhotoURL: 1,
+              campName: "$camp.name"
+            }
+          },
+          { $sort: { date: -1 } },
+          { $limit: limit }
+        ]).toArray();
+
+        res.json(feedback);
+      } catch (error) {
+        console.error("Feedback fetch error:", error);
+        res.status(500).json({ error: "Failed to fetch feedback" });
+      }
+    });
+
+    // ======================
+    // FEEDBACK ROUTES END <<
+    // ======================
 
     // ======================
     // CAMP ROUTES START >>
@@ -430,8 +759,8 @@ async function run() {
           return res.status(400).json({ error: "Camp ID is required" });
         }
 
-        // Query by string _id
-        const camp = await campsCollection.findOne({ _id: campId });
+        const objectId = new ObjectId(campId); // FIX HERE
+        const camp = await campsCollection.findOne({ _id: objectId });
 
         if (!camp) {
           return res.status(404).json({ error: "Camp not found" });
@@ -443,6 +772,7 @@ async function run() {
         res.status(500).json({ error: "Server error" });
       }
     });
+
 
     // POST: Add a new camp (Organizer only)
     app.post("/camps", verifyFBToken, verifyOrganizer, async (req, res) => {
@@ -476,6 +806,47 @@ async function run() {
     // ======================
     // CAMP ROUTES END <<
     // ======================
+
+    // DELETE: Cancel registration (update to handle payment status)
+    app.delete('/cancel-registration/:campId', verifyFBToken, async (req, res) => {
+      try {
+        const campId = req.params.campId;
+        const email = req.user.email;
+
+        // Find the registration
+        const registration = await registrationsCollection.findOne({
+          campId: new ObjectId(campId),
+          participantEmail: email
+        });
+
+        if (!registration) {
+          return res.status(404).json({ error: "Registration not found" });
+        }
+
+        // Check payment status
+        if (registration.paymentStatus === "Paid") {
+          return res.status(400).json({
+            error: "Cannot cancel after payment. Please contact support."
+          });
+        }
+
+        // Delete the registration
+        await registrationsCollection.deleteOne({
+          _id: registration._id
+        });
+
+        // Decrement participant count
+        await campsCollection.updateOne(
+          { _id: new ObjectId(campId) },
+          { $inc: { participantCount: -1 } }
+        );
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Error cancelling registration:", error);
+        res.status(500).json({ error: "Failed to cancel registration" });
+      }
+    });
 
     // =========================================
     // UPDATED CAMP ROUTES (ORGANIZER) START >>
@@ -568,159 +939,6 @@ async function run() {
     // =========================================
     // UPDATED CAMP ROUTES (ORGANIZER) END   <<
     // =========================================
-
-    // ========================
-    // PAYMENT ROUTES START >>
-    // ========================
-
-    // GET /payments?email=someone@example.com
-    app.get("/payments", verifyFBToken, async (req, res) => {
-      try {
-        const email = req.query.email;
-
-        if (!email) {
-          return res.status(400).send({
-            success: false,
-            message: "Email query parameter required",
-          });
-        }
-
-        if (req.user.email !== email) {
-          return res.status(403).send({
-            success: false,
-            message: "Unauthorized",
-          });
-        }
-
-        const payments = await paymentsCollection
-          .find({ participantEmail: email })
-          .sort({ payment_time: -1 })
-          .toArray();
-
-        res.send({ success: true, data: payments });
-      } catch (error) {
-        console.error("Error fetching payments:", error);
-        res.status(500).send({
-          success: false,
-          message: "Failed to fetch payment history",
-        });
-      }
-    });
-
-    app.post("/create-payment-intent", verifyFBToken, verifyParticipant, async (req, res) => {
-      const { amount, campId } = req.body;
-
-      try {
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: amount * 100, // amount in cents
-          currency: "usd",
-          metadata: { campId },
-        });
-
-        res.send({
-          clientSecret: paymentIntent.client_secret,
-        });
-      } catch (err) {
-        console.error("Error creating payment intent:", err);
-        res.status(500).send({ error: err.message });
-      }
-    });
-
-    // POST: Save payment and update registration status
-    app.post("/payments", verifyFBToken, async (req, res) => {
-      const session = client.startSession();
-
-      try {
-        const {
-          campId,
-          registrationId,
-          transactionId,
-          amount,
-          paymentMethod
-        } = req.body;
-
-        // Validate required fields
-        if (!campId || !registrationId || !transactionId || !amount) {
-          return res.status(400).json({
-            success: false,
-            message: "Missing required payment information"
-          });
-        }
-
-        // Verify registration belongs to user
-        const registration = await registrationsCollection.findOne({
-          _id: new ObjectId(registrationId),
-          participantEmail: req.user.email
-        }, { session });
-
-        if (!registration) {
-          return res.status(404).json({
-            success: false,
-            message: "Registration not found or not owned by user"
-          });
-        }
-
-        // Check for duplicate payment
-        const existingPayment = await paymentsCollection.findOne({
-          registrationId: new ObjectId(registrationId)
-        }, { session });
-
-        if (existingPayment) {
-          return res.status(400).json({
-            success: false,
-            message: "Payment already processed for this registration"
-          });
-        }
-
-        await session.withTransaction(async () => {
-          // 1. Update the registration's payment status
-          const registrationUpdate = await registrationsCollection.updateOne(
-            { _id: new ObjectId(registrationId) },
-            { $set: { paymentStatus: "Paid" } },
-            { session }
-          );
-
-          // 2. Create payment record
-          const paymentRecord = {
-            campId: new ObjectId(campId),
-            registrationId: new ObjectId(registrationId),
-            participantEmail: req.user.email,
-            transactionId,
-            amount: amount / 100, // Convert back to dollars
-            paymentMethod,
-            paymentDate: new Date(),
-            status: "Completed"
-          };
-
-          const paymentInsert = await paymentsCollection.insertOne(
-            paymentRecord,
-            { session }
-          );
-        });
-
-        res.json({
-          success: true,
-          message: "Payment processed successfully"
-        });
-      } catch (error) {
-        console.error("Payment processing error:", {
-          error: error.message,
-          stack: error.stack,
-          requestBody: req.body,
-          user: req.user.email
-        });
-        res.status(500).json({
-          success: false,
-          message: "Failed to process payment"
-        });
-      } finally {
-        await session.endSession();
-      }
-    });
-
-    // ========================
-    // PAYMENT ROUTES END   <<
-    // ========================
 
     // ==============================
     // STATIC PUBLIC ROUTES START >>
