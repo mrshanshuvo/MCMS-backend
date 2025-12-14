@@ -7,7 +7,6 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -23,19 +22,21 @@ admin.initializeApp({
 });
 
 // Middleware
-app.use(cors(
-  {
-    origin: ["https://mcms-auth.web.app"],
-    credentials: true
-  }
-));
+app.use(
+  cors({
+    origin: ["https://mcms-auth.web.app", "http://localhost:5173"],
+    credentials: true,
+  })
+);
 
 // Right after app initialization (before routes)
 app.use(helmet());
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests
-}));
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests
+  })
+);
 
 // MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ezlz7xu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -150,7 +151,7 @@ async function run() {
 
     // PATCH: Update user's last_login
     app.patch("/users/:email", verifyFBToken, async (req, res) => {
-      const email = req.params.email;
+      const { email } = req.params;
       const { last_login } = req.body;
 
       if (!last_login) {
@@ -176,7 +177,7 @@ async function run() {
 
     // GET: Get user by email
     app.get("/users/:email", async (req, res) => {
-      const email = req.params.email;
+      const { email } = req.params;
       try {
         const user = await usersCollection.findOne({ email });
         if (user) {
@@ -192,7 +193,7 @@ async function run() {
 
     // PUT: Update user
     app.put("/users/:email", verifyFBToken, async (req, res) => {
-      const email = req.params.email;
+      const { email } = req.params;
       const { name, photoURL, role, phone, address } = req.body;
 
       const updateFields = {};
@@ -221,7 +222,7 @@ async function run() {
 
     // GET: Get user role by email
     app.get("/users/:email/role", async (req, res) => {
-      const email = req.params.email;
+      const { email } = req.params;
       try {
         const user = await usersCollection.findOne({ email });
 
@@ -340,7 +341,9 @@ async function run() {
     app.delete("/registrations/:id", async (req, res) => {
       try {
         const { id } = req.params;
-        const result = await registrationsCollection.deleteOne({ _id: new ObjectId(id) });
+        const result = await registrationsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
 
         if (result.deletedCount === 0) {
           return res.status(404).json({ message: "Registration not found" });
@@ -352,7 +355,6 @@ async function run() {
         res.status(500).json({ error: "Server error" });
       }
     });
-
 
     // GET: Get registered camps with details
     app.get(
@@ -476,46 +478,48 @@ async function run() {
     );
 
     // Add with other routes
-    app.get('/analytics/:participantId', verifyFBToken, async (req, res) => {
+    app.get("/analytics/:participantId", verifyFBToken, async (req, res) => {
       try {
-        const analytics = await registrationsCollection.aggregate([
-          {
-            $match: {
-              participantEmail: req.user.email,
-              paymentStatus: "Paid"
-            }
-          },
-          {
-            $lookup: {
-              from: "camps",
-              localField: "campId",
-              foreignField: "_id",
-              as: "camp"
-            }
-          },
-          { $unwind: "$camp" },
-          {
-            $project: {
-              _id: 0,
-              campName: "$camp.name",
-              date: "$camp.dateTime",
-              fees: "$camp.fees",
-              status: "$confirmationStatus",
-              paymentDate: 1
-            }
-          },
-          { $sort: { paymentDate: -1 } }
-        ]).toArray();
+        const analytics = await registrationsCollection
+          .aggregate([
+            {
+              $match: {
+                participantEmail: req.user.email,
+                paymentStatus: "Paid",
+              },
+            },
+            {
+              $lookup: {
+                from: "camps",
+                localField: "campId",
+                foreignField: "_id",
+                as: "camp",
+              },
+            },
+            { $unwind: "$camp" },
+            {
+              $project: {
+                _id: 0,
+                campName: "$camp.name",
+                date: "$camp.dateTime",
+                fees: "$camp.fees",
+                status: "$confirmationStatus",
+                paymentDate: 1,
+              },
+            },
+            { $sort: { paymentDate: -1 } },
+          ])
+          .toArray();
 
         res.json({
           success: true,
-          data: analytics
+          data: analytics,
         });
       } catch (error) {
         console.error("Analytics error:", error);
         res.status(500).json({
           success: false,
-          error: "Failed to fetch analytics"
+          error: "Failed to fetch analytics",
         });
       }
     });
@@ -581,7 +585,13 @@ async function run() {
       try {
         const { campId, registrationId, transactionId, amount, paymentMethod } =
           req.body;
-        console.log("Incoming payment:", { campId, registrationId, transactionId, amount, paymentMethod });
+        console.log("Incoming payment:", {
+          campId,
+          registrationId,
+          transactionId,
+          amount,
+          paymentMethod,
+        });
 
         await session.withTransaction(async () => {
           // Verify registration
@@ -631,7 +641,6 @@ async function run() {
         console.error("Payment processing error:", error);
         console.error("Payment error stack:", error.stack);
         res.status(500).json({ error: error.message });
-
       } finally {
         await session.endSession();
       }
@@ -670,11 +679,10 @@ async function run() {
       }
     });
 
-
     // GET: Payment history by email query param
     app.get("/paymentsByEmail", verifyFBToken, async (req, res) => {
       try {
-        const email = req.query.email;
+        const { email } = req.query;
 
         if (req.user.email !== email)
           return res.status(403).send({
@@ -841,97 +849,107 @@ async function run() {
     // ======================
 
     // GET: Get all registrations
-    app.get("/registrations", verifyFBToken, verifyOrganizer, async (req, res) => {
-      try {
-        // Parse query parameters
-        const {
-          page = 1,
-          limit = 10,
-          search = '',
-          status = 'all',
-          campId,
-          sortBy = 'registrationDate',
-          sortOrder = 'desc'
-        } = req.query;
+    app.get(
+      "/registrations",
+      verifyFBToken,
+      verifyOrganizer,
+      async (req, res) => {
+        try {
+          // Parse query parameters
+          const {
+            page = 1,
+            limit = 10,
+            search = "",
+            status = "all",
+            campId,
+            sortBy = "registrationDate",
+            sortOrder = "desc",
+          } = req.query;
 
-        // Validate and sanitize inputs
-        const pageNumber = Math.max(parseInt(page), 1);
-        const limitNumber = Math.min(Math.max(parseInt(limit), 1), 100);
-        const sortDirection = sortOrder === 'asc' ? 1 : -1;
+          // Validate and sanitize inputs
+          const pageNumber = Math.max(parseInt(page), 1);
+          const limitNumber = Math.min(Math.max(parseInt(limit), 1), 100);
+          const sortDirection = sortOrder === "asc" ? 1 : -1;
 
-        // Build the query filter
-        const filter = {};
+          // Build the query filter
+          const filter = {};
 
-        // Status filter
-        if (status !== 'all') {
-          filter.status = status;
-        }
-
-        // Camp ID filter
-        if (campId) {
-          filter.campId = new ObjectId(campId);
-        }
-
-        // Search filter (case-insensitive)
-        if (search) {
-          const searchRegex = new RegExp(search, 'i');
-          filter.$or = [
-            { participantName: searchRegex },
-            { participantEmail: searchRegex },
-            { transactionId: searchRegex }
-          ];
-        }
-
-        // Get total count for pagination
-        const totalCount = await registrationsCollection.countDocuments(filter);
-
-        // Fetch paginated and sorted registrations
-        const registrations = await registrationsCollection
-          .find(filter)
-          .sort({ [sortBy]: sortDirection })
-          .skip((pageNumber - 1) * limitNumber)
-          .limit(limitNumber)
-          .toArray();
-
-        // Populate camp information if needed
-        const campIds = [...new Set(registrations.map(r => r.campId))];
-        const camps = await campsCollection.find({
-          _id: { $in: campIds }
-        }).toArray();
-
-        const campMap = camps.reduce((map, camp) => {
-          map[camp._id] = camp;
-          return map;
-        }, {});
-
-        const enrichedRegistrations = registrations.map(reg => ({
-          ...reg,
-          campName: campMap[reg.campId]?.name || 'Unknown Camp',
-          campFees: campMap[reg.campId]?.fees || 0,
-          campLocation: campMap[reg.campId]?.location || 'Unknown Location'
-        }));
-
-        res.status(200).json({
-          success: true,
-          data: enrichedRegistrations,
-          pagination: {
-            page: pageNumber,
-            limit: limitNumber,
-            totalCount,
-            totalPages: Math.ceil(totalCount / limitNumber)
+          // Status filter
+          if (status !== "all") {
+            filter.status = status;
           }
-        });
 
-      } catch (error) {
-        console.error("Failed to get registrations:", error);
-        res.status(500).json({
-          success: false,
-          error: "Failed to fetch registrations",
-          details: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+          // Camp ID filter
+          if (campId) {
+            filter.campId = new ObjectId(campId);
+          }
+
+          // Search filter (case-insensitive)
+          if (search) {
+            const searchRegex = new RegExp(search, "i");
+            filter.$or = [
+              { participantName: searchRegex },
+              { participantEmail: searchRegex },
+              { transactionId: searchRegex },
+            ];
+          }
+
+          // Get total count for pagination
+          const totalCount = await registrationsCollection.countDocuments(
+            filter
+          );
+
+          // Fetch paginated and sorted registrations
+          const registrations = await registrationsCollection
+            .find(filter)
+            .sort({ [sortBy]: sortDirection })
+            .skip((pageNumber - 1) * limitNumber)
+            .limit(limitNumber)
+            .toArray();
+
+          // Populate camp information if needed
+          const campIds = [...new Set(registrations.map((r) => r.campId))];
+          const camps = await campsCollection
+            .find({
+              _id: { $in: campIds },
+            })
+            .toArray();
+
+          const campMap = camps.reduce((map, camp) => {
+            map[camp._id] = camp;
+            return map;
+          }, {});
+
+          const enrichedRegistrations = registrations.map((reg) => ({
+            ...reg,
+            campName: campMap[reg.campId]?.name || "Unknown Camp",
+            campFees: campMap[reg.campId]?.fees || 0,
+            campLocation: campMap[reg.campId]?.location || "Unknown Location",
+          }));
+
+          res.status(200).json({
+            success: true,
+            data: enrichedRegistrations,
+            pagination: {
+              page: pageNumber,
+              limit: limitNumber,
+              totalCount,
+              totalPages: Math.ceil(totalCount / limitNumber),
+            },
+          });
+        } catch (error) {
+          console.error("Failed to get registrations:", error);
+          res.status(500).json({
+            success: false,
+            error: "Failed to fetch registrations",
+            details:
+              process.env.NODE_ENV === "development"
+                ? error.message
+                : undefined,
+          });
+        }
       }
-    });
-
+    );
 
     // GET: Camps list with search, sort, pagination
     app.get("/camps", async (req, res) => {
@@ -1029,13 +1047,11 @@ async function run() {
         newCamp.createdAt = new Date();
 
         const result = await campsCollection.insertOne(newCamp);
-        res
-          .status(201)
-          .json({
-            success: true,
-            message: "Camp added",
-            campId: result.insertedId,
-          });
+        res.status(201).json({
+          success: true,
+          message: "Camp added",
+          campId: result.insertedId,
+        });
       } catch (error) {
         console.error("Error adding camp:", error);
         res.status(500).json({ success: false, error: "Failed to add camp" });
@@ -1056,7 +1072,8 @@ async function run() {
 
           const query = { organizerEmail };
 
-          const camps = await campsCollection.find(query)
+          const camps = await campsCollection
+            .find(query)
             .skip(skip)
             .limit(limit)
             .toArray();
@@ -1076,15 +1093,14 @@ async function run() {
       }
     );
 
-
     // DELETE: Cancel registration (update to handle payment status)
     app.delete(
       "/cancel-registration/:campId",
       verifyFBToken,
       async (req, res) => {
         try {
-          const campId = req.params.campId;
-          const email = req.user.email;
+          const { campId } = req.params;
+          const { email } = req.user;
 
           // Find the registration
           const registration = await registrationsCollection.findOne({
@@ -1133,7 +1149,7 @@ async function run() {
       verifyOrganizer,
       async (req, res) => {
         try {
-          const campId = req.params.campId;
+          const { campId } = req.params;
           const updatedCamp = req.body;
 
           // Verify the camp belongs to the organizer
@@ -1176,7 +1192,7 @@ async function run() {
       verifyOrganizer,
       async (req, res) => {
         try {
-          const campId = req.params.campId;
+          const { campId } = req.params;
 
           // First verify the camp belongs to this organizer
           const camp = await campsCollection.findOne({
@@ -1283,7 +1299,7 @@ async function run() {
     app.use((req, res) => {
       res.status(404).json({
         success: false,
-        error: "Route not found"
+        error: "Route not found",
       });
     });
 
@@ -1293,7 +1309,8 @@ async function run() {
       res.status(500).json({
         success: false,
         error: "Internal server error",
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message:
+          process.env.NODE_ENV === "development" ? err.message : undefined,
       });
     });
 
