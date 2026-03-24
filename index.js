@@ -24,7 +24,7 @@ admin.initializeApp({
 // Middleware
 app.use(
   cors({
-    origin: ["https://mcms-auth.web.app", "http://localhost:5173"],
+    origin: ["https://mcms-auth.web.app", "http://localhost:5173", "https://mcms-web-client.vercel.app"],
     credentials: true,
   })
 );
@@ -39,7 +39,9 @@ app.use(
 );
 
 // MongoDB Connection
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ezlz7xu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+// const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ezlz7xu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@ac-4xay6dy-shard-00-00.ezlz7xu.mongodb.net:27017,ac-4xay6dy-shard-00-01.ezlz7xu.mongodb.net:27017,ac-4xay6dy-shard-00-02.ezlz7xu.mongodb.net:27017/medicalDB?tls=true&authSource=admin&retryWrites=true&w=majority&appName=Cluster0`
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
