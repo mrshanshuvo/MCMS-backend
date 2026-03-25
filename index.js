@@ -367,25 +367,41 @@ async function run() {
         try {
           const page = parseInt(req.query.page) || 1;
           const limit = parseInt(req.query.limit) || 5;
+          const search = req.query.search || "";
+          const status = req.query.status || "all";
           const skip = (page - 1) * limit;
+
+          // Search criteria for camp name
+          const matchStage = {};
+          if (search) {
+            matchStage.name = { $regex: new RegExp(search, "i") };
+          }
+
+          // Status filter for registration
+          const registrationMatch = {
+            $expr: {
+              $and: [
+                { $eq: ["$campId", "$$campIdObj"] },
+                { $eq: ["$participantEmail", req.params.email] },
+              ],
+            },
+          };
+
+          if (status && status !== "all") {
+            registrationMatch.paymentStatus = { $regex: new RegExp(`^${status}$`, "i") };
+          }
 
           const [results, total] = await Promise.all([
             campsCollection
               .aggregate([
+                { $match: matchStage }, // Filter by camp name first
                 {
                   $lookup: {
                     from: "registrations",
                     let: { campIdObj: "$_id" },
                     pipeline: [
                       {
-                        $match: {
-                          $expr: {
-                            $and: [
-                              { $eq: ["$campId", "$$campIdObj"] },
-                              { $eq: ["$participantEmail", req.params.email] },
-                            ],
-                          },
-                        },
+                        $match: registrationMatch,
                       },
                       {
                         $project: {
@@ -400,7 +416,7 @@ async function run() {
                     as: "participants",
                   },
                 },
-                { $match: { "participants.0": { $exists: true } } },
+                { $match: { "participants.0": { $exists: true } } }, // Only camps with matching registrations
                 {
                   $lookup: {
                     from: "feedback",
@@ -436,6 +452,7 @@ async function run() {
                     healthcareProfessional: 1,
                     participants: 1,
                     hasFeedback: 1,
+                    imageURL: 1,
                   },
                 },
                 { $skip: skip },
@@ -444,20 +461,14 @@ async function run() {
               .toArray(),
             campsCollection
               .aggregate([
+                { $match: matchStage },
                 {
                   $lookup: {
                     from: "registrations",
                     let: { campIdObj: "$_id" },
                     pipeline: [
                       {
-                        $match: {
-                          $expr: {
-                            $and: [
-                              { $eq: ["$campId", "$$campIdObj"] },
-                              { $eq: ["$participantEmail", req.params.email] },
-                            ],
-                          },
-                        },
+                        $match: registrationMatch,
                       },
                     ],
                     as: "participants",
@@ -651,28 +662,74 @@ async function run() {
     // GET: Payment history
     app.get("/payments", verifyFBToken, async (req, res) => {
       try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 5;
-        const skip = (page - 1) * limit;
+        const { page = 1, limit = 5, search = "", status = "all" } = req.query;
+        const pageNumber = parseInt(page);
+        const limitNumber = parseInt(limit);
+        const skip = (pageNumber - 1) * limitNumber;
 
-        const query = { participantEmail: req.user.email };
+        // Base match by participant email
+        const matchStage = { participantEmail: req.user.email };
 
-        const total = await paymentsCollection.countDocuments(query);
+        // Status filter
+        if (status && status !== "all") {
+          matchStage.status = { $regex: new RegExp(`^${status}$`, "i") };
+        }
 
-        const payments = await paymentsCollection
-          .find(query)
-          .sort({ paymentDate: -1 })
-          .skip(skip)
-          .limit(limit)
-          .toArray();
+        const pipeline = [
+          { $match: matchStage },
+          {
+            $lookup: {
+              from: "camps",
+              localField: "campId",
+              foreignField: "_id",
+              as: "campDetails",
+            },
+          },
+          { $unwind: "$campDetails" },
+          {
+            $addFields: {
+              campName: "$campDetails.name",
+              campLocation: "$campDetails.location",
+              campImage: "$campDetails.imageURL",
+            },
+          },
+        ];
+
+        // Search filter (transaction ID or camp name)
+        if (search) {
+          const searchRegex = new RegExp(search, "i");
+          pipeline.push({
+            $match: {
+              $or: [
+                { transactionId: searchRegex },
+                { campName: searchRegex },
+              ],
+            },
+          });
+        }
+
+        pipeline.push(
+          { $sort: { paymentDate: -1 } },
+          { $project: { campDetails: 0 } },
+          {
+            $facet: {
+              data: [{ $skip: skip }, { $limit: limitNumber }],
+              total: [{ $count: "count" }],
+            },
+          }
+        );
+
+        const result = await paymentsCollection.aggregate(pipeline).toArray();
+        const payments = result[0]?.data || [];
+        const total = result[0]?.total[0]?.count || 0;
 
         res.json({
           data: payments,
           pagination: {
             total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit),
+            page: pageNumber,
+            limit: limitNumber,
+            totalPages: Math.ceil(total / limitNumber),
           },
         });
       } catch (error) {
@@ -1070,9 +1127,19 @@ async function run() {
           const organizerEmail = req.user.email;
           const page = parseInt(req.query.page) || 1;
           const limit = parseInt(req.query.limit) || 5;
+          const search = req.query.search || "";
           const skip = (page - 1) * limit;
 
           const query = { organizerEmail };
+
+          if (search) {
+            const searchRegex = new RegExp(search, "i");
+            query.$or = [
+              { name: { $regex: searchRegex } },
+              { location: { $regex: searchRegex } },
+              { healthcareProfessional: { $regex: searchRegex } },
+            ];
+          }
 
           const camps = await campsCollection
             .find(query)
