@@ -1287,6 +1287,30 @@ async function run() {
       }
     });
 
+    // GET /blogs/:id
+    app.get("/blogs/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!ObjectId.isValid(id)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid blog ID" });
+        }
+        const blog = await blogCollection.findOne({ _id: new ObjectId(id) });
+        if (!blog) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Blog not found" });
+        }
+        res.send({ success: true, data: blog });
+      } catch (error) {
+        console.error("Error fetching blog by ID:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Internal server error" });
+      }
+    });
+
     // ============================
     // STATIC PUBLIC ROUTES END <<
     // ============================
