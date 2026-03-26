@@ -340,7 +340,7 @@ async function run() {
     });
 
     // DELETE a registration by ID
-    app.delete("/registrations/:id", async (req, res) => {
+    app.delete("/registrations/:id", verifyFBToken, async (req, res) => {
       try {
         const { id } = req.params;
         const result = await registrationsCollection.deleteOne({
@@ -933,9 +933,9 @@ async function run() {
           // Build the query filter
           const filter = {};
 
-          // Status filter
+          // Status filter (maps to paymentStatus field)
           if (status !== "all") {
-            filter.status = status;
+            filter.paymentStatus = status;
           }
 
           // Camp ID filter
@@ -1025,13 +1025,15 @@ async function run() {
 
         const searchRegex = new RegExp(search, "i");
 
-        const query = {
-          $or: [
-            { campName: { $regex: searchRegex } },
-            { location: { $regex: searchRegex } },
-            { healthcareProfessional: { $regex: searchRegex } },
-          ],
-        };
+        const query = search
+          ? {
+              $or: [
+                { name: { $regex: searchRegex } },
+                { location: { $regex: searchRegex } },
+                { healthcareProfessional: { $regex: searchRegex } },
+              ],
+            }
+          : {};
 
         let sortOption = {};
         switch (sort) {
@@ -1039,13 +1041,19 @@ async function run() {
             sortOption = { participantCount: -1 };
             break;
           case "campFeesAsc":
-            sortOption = { campFees: 1 };
+            sortOption = { fees: 1 };
             break;
           case "campFeesDesc":
-            sortOption = { campFees: -1 };
+            sortOption = { fees: -1 };
             break;
           case "alphabetical":
-            sortOption = { campName: 1 };
+            sortOption = { name: 1 };
+            break;
+          case "dateAsc":
+            sortOption = { dateTime: 1 };
+            break;
+          case "dateDesc":
+            sortOption = { dateTime: -1 };
             break;
           default:
             sortOption = { participantCount: -1 };
