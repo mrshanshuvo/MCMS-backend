@@ -50,11 +50,13 @@ const findAllCampsInDB = async ({
     .toArray();
 
   return {
-    total,
-    page: pageNum,
-    limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
     camps,
+    meta: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    },
   };
 };
 
@@ -84,9 +86,12 @@ const findOrganizerCampsInDB = async (organizerEmail, page = 1, limit = 5) => {
 
   return {
     camps,
-    totalCount,
-    currentPage: page,
-    totalPages: Math.ceil(totalCount / limit),
+    meta: {
+      total: totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit),
+    },
   };
 };
 
@@ -239,7 +244,17 @@ const findCampsWithRegistrationsInDB = async (email, page = 1, limit = 5) => {
       .toArray(),
   ]);
 
-  return { results, totalCount: total[0]?.total || 0 };
+  const totalCount = total[0]?.total || 0;
+
+  return {
+    results,
+    meta: {
+      total: totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit),
+    },
+  };
 };
 
 module.exports = {

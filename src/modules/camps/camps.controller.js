@@ -7,12 +7,7 @@ const getCamps = async (req, res) => {
     return sendResponse(res, 200, {
       success: true,
       data: result.camps,
-      meta: {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages,
-      },
+      meta: result.meta,
     });
   } catch (error) {
     console.error('Error fetching camps:', error);
@@ -50,10 +45,14 @@ const addCamp = async (req, res) => {
 
 const getOrganizerCamps = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 5;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 5;
     const result = await campsService.findOrganizerCampsInDB(req.user.email, page, limit);
-    return sendResponse(res, 200, { success: true, data: result });
+    return sendResponse(res, 200, {
+      success: true,
+      data: result.camps,
+      meta: result.meta,
+    });
   } catch (error) {
     console.error('Error fetching organizer camps:', error);
     return sendResponse(res, 500, { success: false, message: 'Failed to fetch organizer camps' });
@@ -125,7 +124,10 @@ const deleteCamp = async (req, res) => {
     }
 
     if (result.deletedCount > 0) {
-      return sendResponse(res, 200, { success: true, data: { deletedCount: result.deletedCount } });
+      return sendResponse(res, 200, {
+        success: true,
+        data: { deletedCount: result.deletedCount },
+      });
     } else {
       return sendResponse(res, 404, { success: false, message: 'Camp not found' });
     }
@@ -137,10 +139,14 @@ const deleteCamp = async (req, res) => {
 
 const getCampsWithRegistrations = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 5;
-    const data = await campsService.findCampsWithRegistrationsInDB(req.params.email, page, limit);
-    return sendResponse(res, 200, { success: true, data });
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 5;
+    const result = await campsService.findCampsWithRegistrationsInDB(req.params.email, page, limit);
+    return sendResponse(res, 200, {
+      success: true,
+      data: result.results,
+      meta: result.meta,
+    });
   } catch (error) {
     console.error('Error fetching camps:', error);
     return sendResponse(res, 500, { success: false, message: 'Failed to fetch camps data' });
