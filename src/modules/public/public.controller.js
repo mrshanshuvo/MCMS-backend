@@ -1,13 +1,13 @@
-const { getCollections } = require('../../config/db');
+const publicService = require('./public.service');
+const sendResponse = require('../../utils/response');
 
 const getSuccessStories = async (req, res) => {
   try {
-    const { successStoriesCollection } = getCollections();
-    const successStories = await successStoriesCollection.find().toArray();
-    res.send({ success: true, data: successStories });
+    const successStories = await publicService.findSuccessStoriesInDB();
+    return sendResponse(res, 200, { success: true, data: successStories });
   } catch (error) {
     console.error('Error fetching success stories:', error);
-    res.status(500).send({
+    return sendResponse(res, 500, {
       success: false,
       message: 'Failed to fetch success stories',
     });
@@ -16,12 +16,11 @@ const getSuccessStories = async (req, res) => {
 
 const getFaqs = async (req, res) => {
   try {
-    const { faqCollection } = getCollections();
-    const faq = await faqCollection.find().toArray();
-    res.send({ success: true, data: faq });
+    const faq = await publicService.findFaqsInDB();
+    return sendResponse(res, 200, { success: true, data: faq });
   } catch (error) {
     console.error('Error fetching faq:', error);
-    res.status(500).send({
+    return sendResponse(res, 500, {
       success: false,
       message: 'Failed to fetch faq',
     });
@@ -30,12 +29,11 @@ const getFaqs = async (req, res) => {
 
 const getBlogs = async (req, res) => {
   try {
-    const { blogCollection } = getCollections();
-    const blog = await blogCollection.find().toArray();
-    res.send({ success: true, data: blog });
+    const blog = await publicService.findBlogsInDB();
+    return sendResponse(res, 200, { success: true, data: blog });
   } catch (error) {
     console.error('Error fetching blog:', error);
-    res.status(500).send({
+    return sendResponse(res, 500, {
       success: false,
       message: 'Failed to fetch blog',
     });

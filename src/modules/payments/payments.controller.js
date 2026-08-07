@@ -1,180 +1,76 @@
-const { ObjectId } = require('mongodb');
-const { getCollections, client } = require('../../config/db');
-
-let stripeInstance;
-const getStripe = () => {
-  if (!stripeInstance) {
-    const stripe = require('stripe');
-    stripeInstance = stripe(process.env.STRIPE_SECRET_KEY);
-  }
-  return stripeInstance;
-};
+const paymentsService = require('./payments.service');
+const sendResponse = require('../../utils/response');
 
 const createPaymentIntent = async (req, res) => {
   try {
     const { amount, campId } = req.body;
-    if (amount === 0) {
-      return res.json({ clientSecret: null });
+    const paymentIntent = await paymentsService.createPaymentIntentInDB(
+      amount,
+      campId,
+      req.user.email
+    );
+    if (!paymentIntent) {
+      return sendResponse(res, 200, { success: true, data: { clientSecret: null } });
     }
-    const stripe = getStripe();
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount * 100,
-      currency: 'usd',
-      metadata: { campId, participantEmail: req.user.email },
+    return sendResponse(res, 200, {
+      success: true,
+      data: { clientSecret: paymentIntent.client_secret },
     });
-    res.json({ clientSecret: paymentIntent.client_secret });
   } catch (error) {
     console.error('Payment intent error:', error);
-    res.status(500).json({ error: 'Failed to create payment intent' });
+    return sendResponse(res, 500, { success: false, message: 'Failed to create payment intent' });
   }
 };
 
 const processPayment = async (req, res) => {
-  const session = client.startSession();
   try {
-    const { campId, registrationId, transactionId, amount, paymentMethod } = req.body;
-    const { registrationsCollection, paymentsCollection } = getCollections();
-
-    await session.withTransaction(async () => {
-      const registration = await registrationsCollection.findOne(
-        {
-          _id: new ObjectId(registrationId),
-          participantEmail: req.user.email,
-        },
-        { session }
-      );
-
-      if (!registration) throw new Error('Registration not found');
-      if (registration.paymentStatus === 'Paid') throw new Error('Payment already processed');
-
-      await registrationsCollection.updateOne(
-        { _id: registration._id },
-        {
-          $set: {
-            paymentStatus: 'Paid',
-            confirmationStatus: 'Confirmed',
-            transactionId,
-          },
-        },
-        { session }
-      );
-
-      await paymentsCollection.insertOne(
-        {
-          campId: new ObjectId(campId),
-          registrationId: new ObjectId(registrationId),
-          participantEmail: req.user.email,
-          transactionId,
-          amount: amount,
-          paymentMethod,
-          paymentDate: new Date(),
-          status: 'Completed',
-        },
-        { session }
-      );
-    });
-
-    res.json({ success: true });
+    const result = await paymentsService.processPaymentInDB(req.body, req.user.email);
+    return sendResponse(res, 200, { success: true, data: result });
   } catch (error) {
     console.error('Payment processing error:', error);
-    res.status(500).json({ error: error.message });
-  } finally {
-    await session.endSession();
+    return sendResponse(res, 500, { success: false, message: error.message });
   }
 };
 
 const getPayments = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 5;
-    const skip = (page - 1) * limit;
-
-    const query = { participantEmail: req.user.email };
-    const { paymentsCollection } = getCollections();
-
-    const total = await paymentsCollection.countDocuments(query);
-    const payments = await paymentsCollection
-      .find(query)
-      .sort({ paymentDate: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    res.json({
-      data: payments,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 5;
+    const result = await paymentsService.findPaymentsInDB(req.user.email, page, limit);
+    return sendResponse(res, 200, {
+      success: true,
+      data: result.data,
+      meta: result.pagination,
     });
   } catch (error) {
     console.error('Error fetching paginated payments:', error);
-    res.status(500).json({ error: 'Failed to fetch payments' });
+    return sendResponse(res, 500, { success: false, message: 'Failed to fetch payments' });
   }
 };
 
 const getPaymentsByEmail = async (req, res) => {
   try {
     const { email } = req.query;
-
     if (req.user.email !== email) {
-      return res.status(403).send({
-        success: false,
-        message: 'Unauthorized',
-      });
+      return sendResponse(res, 403, { success: false, message: 'Unauthorized' });
     }
-
-    const filter = email ? { participantEmail: email } : {};
-    const { paymentsCollection } = getCollections();
-
-    const payments = await paymentsCollection.find(filter).sort({ payment_time: -1 }).toArray();
-
-    res.send({ success: true, data: payments });
+    const payments = await paymentsService.findPaymentsByEmailInDB(email);
+    return sendResponse(res, 200, { success: true, data: payments });
   } catch (error) {
     console.error('Error fetching payments:', error);
-    res.status(500).send({ success: false, message: 'Failed to fetch payment history' });
+    return sendResponse(res, 500, { success: false, message: 'Failed to fetch payment history' });
   }
 };
 
 const stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  let event;
-
   try {
-    const stripe = getStripe();
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    const result = await paymentsService.processStripeWebhookEvent(req.body, sig);
+    return res.json(result);
   } catch (err) {
     console.error('Webhook error:', err);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
-
-  if (event.type === 'payment_intent.succeeded') {
-    const paymentIntent = event.data.object;
-    const { campId, participantEmail } = paymentIntent.metadata;
-
-    try {
-      const { registrationsCollection } = getCollections();
-      await registrationsCollection.updateOne(
-        {
-          campId: new ObjectId(campId),
-          participantEmail,
-          transactionId: paymentIntent.id,
-        },
-        {
-          $set: {
-            paymentStatus: 'Paid',
-            confirmationStatus: 'Confirmed',
-          },
-        }
-      );
-    } catch (error) {
-      console.error('Webhook update error:', error);
-    }
-  }
-
-  res.json({ received: true });
 };
 
 module.exports = {
