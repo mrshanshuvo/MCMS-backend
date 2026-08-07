@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { notFoundHandler, globalErrorHandler } = require('./middlewares/errorHandler');
+const paymentsController = require('./modules/payments/payments.controller');
 
 // Feature Routes
 const usersRoutes = require('./modules/users/users.routes');
@@ -27,6 +28,13 @@ app.use(
     windowMs: 15 * 60 * 1000,
     max: 100,
   })
+);
+
+// Raw Body Route for Stripe Webhooks BEFORE express.json()
+app.post(
+  '/stripe-webhook',
+  express.raw({ type: 'application/json' }),
+  paymentsController.stripeWebhook
 );
 
 // Body Parser Middleware

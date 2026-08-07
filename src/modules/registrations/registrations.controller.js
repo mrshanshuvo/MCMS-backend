@@ -1,6 +1,10 @@
 const { ObjectId } = require('mongodb');
 const { getCollections } = require('../../config/db');
 
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 const registerForCamp = async (req, res) => {
   try {
     const {
@@ -43,7 +47,6 @@ const registerForCamp = async (req, res) => {
       registrationDate: new Date(),
       paymentStatus: 'Unpaid',
       confirmationStatus: 'Pending',
-      transactionId: new ObjectId(),
     };
 
     const result = await registrationsCollection.insertOne(newRegistration);
@@ -60,6 +63,11 @@ const registerForCamp = async (req, res) => {
 const checkRegistration = async (req, res) => {
   try {
     const { campId } = req.query;
+
+    if (!campId || !ObjectId.isValid(campId)) {
+      return res.status(400).json({ error: 'Valid campId is required' });
+    }
+
     const { registrationsCollection } = getCollections();
     const registration = await registrationsCollection.findOne({
       campId: new ObjectId(campId),
@@ -75,14 +83,35 @@ const checkRegistration = async (req, res) => {
 const deleteRegistration = async (req, res) => {
   try {
     const { id } = req.params;
-    const { registrationsCollection } = getCollections();
-    const result = await registrationsCollection.deleteOne({
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid registration ID' });
+    }
+
+    const { registrationsCollection, campsCollection, usersCollection } = getCollections();
+
+    const registration = await registrationsCollection.findOne({
       _id: new ObjectId(id),
     });
 
-    if (result.deletedCount === 0) {
+    if (!registration) {
       return res.status(404).json({ message: 'Registration not found' });
     }
+
+    const requestingUser = await usersCollection.findOne({ email: req.user.email });
+
+    if (registration.participantEmail !== req.user.email && requestingUser?.role !== 'organizer') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await registrationsCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    await campsCollection.updateOne(
+      { _id: registration.campId },
+      { $inc: { participantCount: -1 } }
+    );
 
     res.json({ message: 'Registration deleted successfully' });
   } catch (error) {
@@ -110,15 +139,15 @@ const getAllRegistrations = async (req, res) => {
     const filter = {};
 
     if (status !== 'all') {
-      filter.status = status;
+      filter.confirmationStatus = status;
     }
 
-    if (campId) {
+    if (campId && ObjectId.isValid(campId)) {
       filter.campId = new ObjectId(campId);
     }
 
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
+      const searchRegex = new RegExp(escapeRegex(search), 'i');
       filter.$or = [
         { participantName: searchRegex },
         { participantEmail: searchRegex },
@@ -178,6 +207,11 @@ const getAllRegistrations = async (req, res) => {
 const cancelRegistration = async (req, res) => {
   try {
     const { campId } = req.params;
+
+    if (!ObjectId.isValid(campId)) {
+      return res.status(400).json({ error: 'Invalid campId format' });
+    }
+
     const { email } = req.user;
     const { registrationsCollection, campsCollection } = getCollections();
 

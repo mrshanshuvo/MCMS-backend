@@ -12,10 +12,5 @@ router.post(
 router.post('/payments', verifyFBToken, paymentsController.processPayment);
 router.get('/payments', verifyFBToken, paymentsController.getPayments);
 router.get('/paymentsByEmail', verifyFBToken, paymentsController.getPaymentsByEmail);
-router.post(
-  '/stripe-webhook',
-  express.raw({ type: 'application/json' }),
-  paymentsController.stripeWebhook
-);
 
 module.exports = router;

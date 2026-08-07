@@ -14,7 +14,7 @@ router.post(
   registrationsController.registerForCamp
 );
 router.get('/registrations/check', verifyFBToken, registrationsController.checkRegistration);
-router.delete('/registrations/:id', registrationsController.deleteRegistration);
+router.delete('/registrations/:id', verifyFBToken, registrationsController.deleteRegistration);
 router.get(
   '/registrations',
   verifyFBToken,

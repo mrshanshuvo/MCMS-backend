@@ -1,7 +1,7 @@
 const { getCollections } = require('../../config/db');
 
 const upsertUser = async (req, res) => {
-  const { email, name, photoURL, role, created_at, last_login } = req.body;
+  const { email, name, photoURL, created_at, last_login } = req.body;
 
   if (!email) {
     return res.status(400).json({ error: 'Email is required.' });
@@ -11,7 +11,7 @@ const upsertUser = async (req, res) => {
     $setOnInsert: {
       name,
       photoURL,
-      role,
+      role: 'participant',
       created_at,
     },
     $set: {
@@ -35,6 +35,10 @@ const updateLastLogin = async (req, res) => {
   const { email } = req.params;
   const { last_login } = req.body;
 
+  if (req.user.email !== email) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
   if (!last_login) {
     return res.status(400).json({ error: 'Missing last_login value.' });
   }
@@ -56,6 +60,11 @@ const updateLastLogin = async (req, res) => {
 
 const getUserByEmail = async (req, res) => {
   const { email } = req.params;
+
+  if (req.user.email !== email) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
   try {
     const { usersCollection } = getCollections();
     const user = await usersCollection.findOne({ email });
@@ -72,12 +81,16 @@ const getUserByEmail = async (req, res) => {
 
 const updateUser = async (req, res) => {
   const { email } = req.params;
-  const { name, photoURL, role, phone, address } = req.body;
+
+  if (req.user.email !== email) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { name, photoURL, phone, address } = req.body;
 
   const updateFields = {};
   if (name !== undefined) updateFields.name = name;
   if (photoURL !== undefined) updateFields.photoURL = photoURL;
-  if (role !== undefined) updateFields.role = role;
   if (phone !== undefined) updateFields.phone = phone;
   if (address !== undefined) updateFields.address = address;
 
@@ -101,6 +114,11 @@ const updateUser = async (req, res) => {
 
 const getUserRole = async (req, res) => {
   const { email } = req.params;
+
+  if (req.user.email !== email) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
   try {
     const { usersCollection } = getCollections();
     const user = await usersCollection.findOne({ email });

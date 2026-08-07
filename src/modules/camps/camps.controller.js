@@ -1,13 +1,17 @@
 const { ObjectId } = require('mongodb');
 const { getCollections } = require('../../config/db');
 
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 const getCamps = async (req, res) => {
   try {
     const { search = '', sort = 'participantCount', page = '1', limit = '6' } = req.query;
 
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-    const searchRegex = new RegExp(search, 'i');
+    const searchRegex = new RegExp(escapeRegex(search), 'i');
 
     const query = {
       $or: [
@@ -62,8 +66,8 @@ const getCampById = async (req, res) => {
   try {
     const campId = req.params.id;
 
-    if (!campId) {
-      return res.status(400).json({ error: 'Camp ID is required' });
+    if (!campId || !ObjectId.isValid(campId)) {
+      return res.status(400).json({ error: 'Valid Camp ID is required' });
     }
 
     const { campsCollection } = getCollections();
@@ -83,11 +87,25 @@ const getCampById = async (req, res) => {
 
 const addCamp = async (req, res) => {
   try {
+    const { name, location, fees, dateTime, healthcareProfessional, description, image } = req.body;
+
+    if (!name || !location || fees === undefined || !dateTime || !healthcareProfessional) {
+      return res.status(400).json({ error: 'Missing required camp fields' });
+    }
+
     const { campsCollection } = getCollections();
-    const newCamp = req.body;
-    newCamp.organizerEmail = req.user.email;
-    newCamp.participantCount = 0;
-    newCamp.createdAt = new Date();
+    const newCamp = {
+      name,
+      location,
+      fees: Number(fees),
+      dateTime,
+      healthcareProfessional,
+      description,
+      image,
+      organizerEmail: req.user.email,
+      participantCount: 0,
+      createdAt: new Date(),
+    };
 
     const result = await campsCollection.insertOne(newCamp);
     res.status(201).json({
@@ -154,7 +172,12 @@ const incrementParticipantCount = async (req, res) => {
 const updateCamp = async (req, res) => {
   try {
     const { campId } = req.params;
-    const updatedCamp = req.body;
+
+    if (!ObjectId.isValid(campId)) {
+      return res.status(400).json({ error: 'Invalid campId format' });
+    }
+
+    const { name, location, fees, dateTime, healthcareProfessional, description, image } = req.body;
     const { campsCollection } = getCollections();
 
     const camp = await campsCollection.findOne({
@@ -169,9 +192,19 @@ const updateCamp = async (req, res) => {
       });
     }
 
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+    if (location !== undefined) updateFields.location = location;
+    if (fees !== undefined) updateFields.fees = Number(fees);
+    if (dateTime !== undefined) updateFields.dateTime = dateTime;
+    if (healthcareProfessional !== undefined)
+      updateFields.healthcareProfessional = healthcareProfessional;
+    if (description !== undefined) updateFields.description = description;
+    if (image !== undefined) updateFields.image = image;
+
     const result = await campsCollection.updateOne(
       { _id: new ObjectId(campId) },
-      { $set: updatedCamp }
+      { $set: updateFields }
     );
 
     if (result.modifiedCount > 0) {
@@ -191,7 +224,13 @@ const updateCamp = async (req, res) => {
 const deleteCamp = async (req, res) => {
   try {
     const { campId } = req.params;
-    const { campsCollection, registrationsCollection } = getCollections();
+
+    if (!ObjectId.isValid(campId)) {
+      return res.status(400).json({ error: 'Invalid campId format' });
+    }
+
+    const { campsCollection, registrationsCollection, paymentsCollection, feedbackCollection } =
+      getCollections();
 
     const camp = await campsCollection.findOne({
       _id: new ObjectId(campId),
@@ -210,9 +249,11 @@ const deleteCamp = async (req, res) => {
     });
 
     if (result.deletedCount > 0) {
-      await registrationsCollection.deleteMany({
-        campId: new ObjectId(campId),
-      });
+      await Promise.all([
+        registrationsCollection.deleteMany({ campId: new ObjectId(campId) }),
+        paymentsCollection.deleteMany({ campId: new ObjectId(campId) }),
+        feedbackCollection.deleteMany({ campId: new ObjectId(campId) }),
+      ]);
 
       res.json({
         success: true,

@@ -25,7 +25,7 @@ const verifyOrganizer = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Organizer access required' });
     }
     next();
-  } catch (error) {
+  } catch {
     return res.status(500).json({ success: false, message: 'Failed to verify user role' });
   }
 };
@@ -38,7 +38,7 @@ const verifyParticipant = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Participant access required' });
     }
     next();
-  } catch (error) {
+  } catch {
     return res.status(500).json({ success: false, message: 'Failed to verify user role' });
   }
 };

@@ -1,6 +1,14 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { ObjectId } = require('mongodb');
 const { getCollections, client } = require('../../config/db');
+
+let stripeInstance;
+const getStripe = () => {
+  if (!stripeInstance) {
+    const stripe = require('stripe');
+    stripeInstance = stripe(process.env.STRIPE_SECRET_KEY);
+  }
+  return stripeInstance;
+};
 
 const createPaymentIntent = async (req, res) => {
   try {
@@ -8,6 +16,7 @@ const createPaymentIntent = async (req, res) => {
     if (amount === 0) {
       return res.json({ clientSecret: null });
     }
+    const stripe = getStripe();
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amount * 100,
       currency: 'usd',
@@ -134,6 +143,7 @@ const stripeWebhook = async (req, res) => {
   let event;
 
   try {
+    const stripe = getStripe();
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error('Webhook error:', err);
