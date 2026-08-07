@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "db:seed": "node src/scripts/seedIndexes.js",
+    "seed:users": "node src/scripts/seedDemoUsers.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
