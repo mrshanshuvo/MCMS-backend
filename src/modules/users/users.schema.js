@@ -1,8 +1,10 @@
 const { z } = require('zod');
 
+const emailSchema = z.string().email({ message: 'Invalid email address' });
+
 const upsertUserSchema = {
   body: z.object({
-    email: z.string().email('Invalid email address'),
+    email: emailSchema,
     name: z.string().optional(),
     photoURL: z.string().optional(),
     created_at: z.string().optional(),
@@ -12,7 +14,7 @@ const upsertUserSchema = {
 
 const updateUserSchema = {
   params: z.object({
-    email: z.string().email('Invalid email address'),
+    email: emailSchema,
   }),
   body: z.object({
     name: z.string().optional(),
@@ -24,7 +26,7 @@ const updateUserSchema = {
 
 const emailParamSchema = {
   params: z.object({
-    email: z.string().email('Invalid email address'),
+    email: emailSchema,
   }),
 };
 
