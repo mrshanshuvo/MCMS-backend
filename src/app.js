@@ -15,6 +15,8 @@ const registrationsRoutes = require('./modules/registrations/registrations.route
 const paymentsRoutes = require('./modules/payments/payments.routes');
 const feedbackRoutes = require('./modules/feedback/feedback.routes');
 const publicRoutes = require('./modules/public/public.routes');
+const notificationsRoutes = require('./modules/notifications/notifications.routes');
+const analyticsRoutes = require('./modules/analytics/analytics.routes');
 
 const app = express();
 
@@ -54,6 +56,8 @@ app.get('/', (req, res) => {
 
 // Mount Domain Feature Routes
 app.use('/users', usersRoutes);
+app.use('/notifications', notificationsRoutes);
+app.use('/analytics', analyticsRoutes);
 app.use('/', campsRoutes);
 app.use('/', registrationsRoutes);
 app.use('/', paymentsRoutes);

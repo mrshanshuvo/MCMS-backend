@@ -28,6 +28,7 @@ async function connectDB() {
     successStoriesCollection: db.collection('success_stories'),
     blogCollection: db.collection('blogs'),
     faqCollection: db.collection('faq'),
+    notificationsCollection: db.collection('notifications'),
   };
 
   // Create Indexes
@@ -39,6 +40,7 @@ async function connectDB() {
   );
   await collections.feedbackCollection.createIndex({ campId: 1 });
   await collections.feedbackCollection.createIndex({ participantEmail: 1 });
+  await collections.notificationsCollection.createIndex({ userEmail: 1, read: 1 });
 
   console.log('Successfully connected to MongoDB');
   return { db, collections };

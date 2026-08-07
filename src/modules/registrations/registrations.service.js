@@ -30,6 +30,21 @@ const registerForCampInDB = async (registrationData) => {
   };
 
   const result = await registrationsCollection.insertOne(newRegistration);
+
+  // Trigger Notification for Participant
+  try {
+    const { createNotification } = require('../notifications/notifications.service');
+    await createNotification({
+      userEmail: participantEmail,
+      title: 'Registration Successful',
+      message: `You successfully registered for the camp.`,
+      type: 'registration',
+      link: '/dashboard/registered-camps',
+    });
+  } catch (err) {
+    console.error('Notification trigger error:', err);
+  }
+
   return { success: true, registrationId: result.insertedId };
 };
 

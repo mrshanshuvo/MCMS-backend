@@ -64,6 +64,21 @@ const processPaymentInDB = async (paymentData, userEmail) => {
         { session }
       );
     });
+
+    // Trigger Notification for Participant
+    try {
+      const { createNotification } = require('../notifications/notifications.service');
+      await createNotification({
+        userEmail,
+        title: 'Payment Successful',
+        message: `Your payment of $${amount} for registration was completed successfully.`,
+        type: 'payment',
+        link: '/dashboard/payment-history',
+      });
+    } catch (err) {
+      console.error('Payment notification error:', err);
+    }
+
     return { success: true };
   } finally {
     await session.endSession();
