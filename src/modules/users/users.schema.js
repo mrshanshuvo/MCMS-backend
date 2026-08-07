@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const emailSchema = z.string().email({ message: 'Invalid email address' });
+const emailSchema = z.email({ message: 'Invalid email address' });
 
 const upsertUserSchema = {
   body: z.object({
