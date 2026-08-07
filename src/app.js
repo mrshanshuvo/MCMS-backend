@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { env } = require('./config/env');
 const logger = require('./config/logger');
 const morganMiddleware = require('./middlewares/morgan.middleware');
 const { notFoundHandler, globalErrorHandler } = require('./middlewares/errorHandler');
@@ -20,9 +21,11 @@ const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const app = express();
 
 // Security, CORS, and Morgan HTTP Logging Middlewares
+const allowedOrigins = (env.CLIENT_URL || '*').split(',').map((url) => url.trim());
+
 app.use(
   cors({
-    origin: '*',
+    origin: allowedOrigins.length === 1 && allowedOrigins[0] === '*' ? '*' : allowedOrigins,
     credentials: true,
   })
 );

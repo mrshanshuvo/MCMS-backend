@@ -8,6 +8,7 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   FB_SERVICE_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  CLIENT_URL: z.string().optional(),
 });
 
 function validateEnv() {
