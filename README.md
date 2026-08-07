@@ -3,6 +3,7 @@
 [![GitHub Repo](https://img.shields.io/badge/repo-MCMS--backend-blue)](https://github.com/mrshanshuvo/MCMS-backend)
 
 ## Overview
+
 The **Medical Camp Management System (MCMS)** is a full-stack application to manage medical camps efficiently.  
 This repository contains the **backend server** built with **Node.js, Express, and MongoDB**, providing RESTful APIs to handle organizers, participants, schedules, and notifications.
 
@@ -23,10 +24,10 @@ The backend works seamlessly with the [MCMS web client](https://github.com/mrsha
 
 ## Tech Stack
 
-- **Backend:** Node.js, Express.js  
-- **Database:** MongoDB (Mongoose)  
-- **Authentication:** JWT (JSON Web Tokens)  
-- **Environment Management:** dotenv  
+- **Backend:** Node.js, Express.js
+- **Database:** MongoDB (Mongoose)
+- **Authentication:** JWT (JSON Web Tokens)
+- **Environment Management:** dotenv
 - **Other:** Nodemon for development, bcrypt for password hashing
 
 ---
@@ -34,6 +35,8 @@ The backend works seamlessly with the [MCMS web client](https://github.com/mrsha
 ## Setup & Installation
 
 1. **Clone the repo**
+
 ```bash
 git clone https://github.com/mrshanshuvo/MCMS-backend.git
 cd MCMS-backend
+```
