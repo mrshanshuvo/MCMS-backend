@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { env } = require('./config/env');
+const logger = require('./config/logger');
+const morganMiddleware = require('./middlewares/morgan.middleware');
 const { notFoundHandler, globalErrorHandler } = require('./middlewares/errorHandler');
 const paymentsController = require('./modules/payments/payments.controller');
 
@@ -15,14 +18,18 @@ const publicRoutes = require('./modules/public/public.routes');
 
 const app = express();
 
-// Security and CORS Middlewares
+// Security, CORS, and Morgan HTTP Logging Middlewares
 app.use(
   cors({
-    origin: ['https://mcms-auth.web.app', 'http://localhost:5173'],
+    origin:
+      env.NODE_ENV === 'production'
+        ? ['https://mcms-auth.web.app']
+        : ['https://mcms-auth.web.app', 'http://localhost:5173'],
     credentials: true,
   })
 );
 app.use(helmet());
+app.use(morganMiddleware);
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -56,5 +63,7 @@ app.use('/', publicRoutes);
 // Error Handling Middlewares
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
+
+logger.info('Express application initialized with security & logging middlewares.');
 
 module.exports = app;

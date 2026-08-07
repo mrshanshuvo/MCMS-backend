@@ -1,4 +1,10 @@
 require('dotenv').config();
+const { validateEnv } = require('./config/env');
+const logger = require('./config/logger');
+
+// Validate environment variables before boot
+validateEnv();
+
 const { connectDB, client } = require('./config/db');
 const app = require('./app');
 
@@ -8,19 +14,19 @@ async function startServer() {
   try {
     await connectDB();
     const server = app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      logger.info(`Server successfully started on port ${PORT}`);
     });
 
     const gracefulShutdown = (signal) => {
-      console.log(`Received ${signal}. Shutting down gracefully...`);
+      logger.warn(`Received ${signal}. Shutting down gracefully...`);
       server.close(async () => {
-        console.log('HTTP server closed.');
+        logger.info('HTTP server closed.');
         try {
           await client.close();
-          console.log('MongoDB connection closed.');
+          logger.info('MongoDB connection closed.');
           process.exit(0);
         } catch (err) {
-          console.error('Error closing MongoDB connection:', err);
+          logger.error(`Error closing MongoDB connection: ${err.message}`);
           process.exit(1);
         }
       });
@@ -29,7 +35,7 @@ async function startServer() {
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error(`Failed to start server: ${error.message}`);
     process.exit(1);
   }
 }
