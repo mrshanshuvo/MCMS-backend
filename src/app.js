@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { env } = require('./config/env');
 const logger = require('./config/logger');
 const morganMiddleware = require('./middlewares/morgan.middleware');
 const { notFoundHandler, globalErrorHandler } = require('./middlewares/errorHandler');
@@ -23,10 +22,7 @@ const app = express();
 // Security, CORS, and Morgan HTTP Logging Middlewares
 app.use(
   cors({
-    origin:
-      env.NODE_ENV === 'production'
-        ? ['https://mcms-auth.web.app']
-        : ['https://mcms-auth.web.app', 'http://localhost:5173'],
+    origin: '*',
     credentials: true,
   })
 );
