@@ -6,6 +6,8 @@ const envSchema = z.object({
   MONGODB_URI: z.string().optional(),
   DB_USER: z.string().optional(),
   DB_PASSWORD: z.string().optional(),
+  JWT_SECRET: z.string().default('supersecretjwtkey12345'),
+  JWT_EXPIRES_IN: z.string().default('7d'),
   STRIPE_SECRET_KEY: z.string().optional(),
   FB_SERVICE_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),

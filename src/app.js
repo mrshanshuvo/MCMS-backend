@@ -9,6 +9,7 @@ const { notFoundHandler, globalErrorHandler } = require('./middlewares/errorHand
 const paymentsController = require('./modules/payments/payments.controller');
 
 // Feature Routes
+const authRoutes = require('./modules/auth/auth.routes');
 const usersRoutes = require('./modules/users/users.routes');
 const campsRoutes = require('./modules/camps/camps.routes');
 const registrationsRoutes = require('./modules/registrations/registrations.routes');
@@ -53,15 +54,33 @@ app.get('/', (req, res) => {
   res.send('Medical Camp Management System Backend is Running');
 });
 
-// Mount Domain Feature Routes
+// Mount Domain Feature Routes (supporting both / and /api prefixes)
+app.use('/auth', authRoutes);
+app.use('/api/auth', authRoutes);
+
 app.use('/users', usersRoutes);
+app.use('/api/users', usersRoutes);
+
 app.use('/notifications', notificationsRoutes);
+app.use('/api/notifications', notificationsRoutes);
+
 app.use('/analytics', analyticsRoutes);
+app.use('/api/analytics', analyticsRoutes);
+
 app.use('/', campsRoutes);
+app.use('/api', campsRoutes);
+
 app.use('/', registrationsRoutes);
+app.use('/api', registrationsRoutes);
+
 app.use('/', paymentsRoutes);
+app.use('/api', paymentsRoutes);
+
 app.use('/', feedbackRoutes);
+app.use('/api', feedbackRoutes);
+
 app.use('/', publicRoutes);
+app.use('/api', publicRoutes);
 
 // Error Handling Middlewares
 app.use(notFoundHandler);

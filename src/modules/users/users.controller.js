@@ -21,7 +21,7 @@ const updateLastLogin = async (req, res) => {
 
   try {
     const result = await usersService.updateLastLoginInDB(email, last_login);
-    if (result.matchedCount === 0) {
+    if (!result) {
       return sendResponse(res, 404, { success: false, message: 'User not found' });
     }
     return sendResponse(res, 200, { success: true, message: 'Last login updated', data: result });
@@ -32,9 +32,9 @@ const updateLastLogin = async (req, res) => {
 };
 
 const getUserByEmail = async (req, res) => {
-  const { email } = req.params;
+  const email = req.params.email || req.user.email;
 
-  if (req.user.email !== email) {
+  if (req.user.email !== email && req.user.role !== 'organizer') {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
@@ -50,10 +50,23 @@ const getUserByEmail = async (req, res) => {
   }
 };
 
-const updateUser = async (req, res) => {
-  const { email } = req.params;
+const getMyProfile = async (req, res) => {
+  try {
+    const user = await usersService.findUserByEmailInDB(req.user.email);
+    if (user) {
+      return sendResponse(res, 200, { success: true, data: user });
+    }
+    return sendResponse(res, 404, { success: false, message: 'User profile not found' });
+  } catch (error) {
+    console.error('Error fetching my profile:', error);
+    return sendResponse(res, 500, { success: false, message: 'Failed to fetch profile' });
+  }
+};
 
-  if (req.user.email !== email) {
+const updateUser = async (req, res) => {
+  const email = req.params.email || req.user.email;
+
+  if (req.user.email !== email && req.user.role !== 'organizer') {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
@@ -76,10 +89,30 @@ const updateUser = async (req, res) => {
   }
 };
 
-const getUserRole = async (req, res) => {
-  const { email } = req.params;
+const updateMyProfile = async (req, res) => {
+  const { name, photoURL, phone, address } = req.body;
+  const updateFields = {};
+  if (name !== undefined) updateFields.name = name;
+  if (photoURL !== undefined) updateFields.photoURL = photoURL;
+  if (phone !== undefined) updateFields.phone = phone;
+  if (address !== undefined) updateFields.address = address;
 
-  if (req.user.email !== email) {
+  try {
+    const updatedUser = await usersService.updateUserInDB(req.user.email, updateFields);
+    if (!updatedUser) {
+      return sendResponse(res, 404, { success: false, message: 'User not found' });
+    }
+    return sendResponse(res, 200, { success: true, data: updatedUser });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    return sendResponse(res, 500, { success: false, message: 'Failed to update profile' });
+  }
+};
+
+const getUserRole = async (req, res) => {
+  const email = req.params.email || req.user.email;
+
+  if (req.user.email !== email && req.user.role !== 'organizer') {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
@@ -98,10 +131,64 @@ const getUserRole = async (req, res) => {
   }
 };
 
+const getAllUsers = async (req, res, next) => {
+  try {
+    const result = await usersService.findAllUsersInDB(req.query);
+    return sendResponse(res, 200, {
+      success: true,
+      data: result.users,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateUserRole = async (req, res, next) => {
+  const { email } = req.params;
+  const { role } = req.body;
+
+  try {
+    const updatedUser = await usersService.updateUserRoleInDB(email, role);
+    if (!updatedUser) {
+      return sendResponse(res, 404, { success: false, message: 'User not found' });
+    }
+    return sendResponse(res, 200, {
+      success: true,
+      message: `User role updated to ${role}`,
+      data: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteUser = async (req, res, next) => {
+  const { email } = req.params;
+
+  try {
+    const deletedUser = await usersService.deleteUserInDB(email);
+    if (!deletedUser) {
+      return sendResponse(res, 404, { success: false, message: 'User not found' });
+    }
+    return sendResponse(res, 200, {
+      success: true,
+      message: 'User deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   upsertUser,
   updateLastLogin,
   getUserByEmail,
+  getMyProfile,
   updateUser,
+  updateMyProfile,
   getUserRole,
+  getAllUsers,
+  updateUserRole,
+  deleteUser,
 };

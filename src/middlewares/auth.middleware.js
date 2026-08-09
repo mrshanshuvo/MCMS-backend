@@ -1,31 +1,46 @@
+const jwt = require('jsonwebtoken');
 const admin = require('../config/firebase');
 const User = require('../modules/users/users.model');
 const sendResponse = require('../utils/response');
+const { env } = require('../config/env');
 
-const verifyFBToken = async (req, res, next) => {
+const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return sendResponse(res, 401, { success: false, message: 'Unauthorized' });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return sendResponse(res, 401, { success: false, message: 'Unauthorized: No token provided' });
   }
+
   const token = authHeader.split(' ')[1];
+
+  // Try native JWT verification first
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = jwt.verify(
+      token,
+      env.JWT_SECRET || process.env.JWT_SECRET || 'supersecretjwtkey12345'
+    );
     req.user = decoded;
-    next();
+    return next();
+  } catch {
+    // Native JWT verification failed, attempt Firebase ID token fallback
+  }
+
+  try {
+    const decodedFB = await admin.auth().verifyIdToken(token);
+    req.user = decodedFB;
+    return next();
   } catch (error) {
-    console.error('Token verification failed:', error);
-    return sendResponse(res, 401, { success: false, message: 'Unauthorized' });
+    console.error('Token verification failed:', error.message);
+    return sendResponse(res, 401, { success: false, message: 'Unauthorized: Invalid token' });
   }
 };
 
 const verifyOrganizer = async (req, res, next) => {
   try {
-    // Fast path: Check custom claims on token first
-    if (req.user.role === 'organizer') {
+    if (req.user?.role === 'organizer') {
       return next();
     }
 
-    const user = await User.findOne({ email: req.user.email });
+    const user = await User.findOne({ email: req.user?.email });
     if (user?.role !== 'organizer') {
       return sendResponse(res, 403, { success: false, message: 'Organizer access required' });
     }
@@ -39,12 +54,11 @@ const verifyOrganizer = async (req, res, next) => {
 
 const verifyParticipant = async (req, res, next) => {
   try {
-    // Fast path: Check custom claims on token first
-    if (req.user.role === 'participant') {
+    if (req.user?.role === 'participant') {
       return next();
     }
 
-    const user = await User.findOne({ email: req.user.email });
+    const user = await User.findOne({ email: req.user?.email });
     if (user?.role !== 'participant') {
       return sendResponse(res, 403, { success: false, message: 'Participant access required' });
     }
@@ -57,7 +71,8 @@ const verifyParticipant = async (req, res, next) => {
 };
 
 module.exports = {
-  verifyFBToken,
+  verifyToken,
+  verifyFBToken: verifyToken, // Alias for backwards compatibility
   verifyOrganizer,
   verifyParticipant,
 };
