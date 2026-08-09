@@ -12,15 +12,19 @@ const upsertUser = async (req, res) => {
 };
 
 const updateLastLogin = async (req, res) => {
-  const { email } = req.params;
+  const identifier = req.params.id || req.params.email;
   const { last_login } = req.body;
 
-  if (req.user.email !== email) {
+  if (
+    req.user.email !== identifier &&
+    req.user.id !== identifier &&
+    req.user.role !== 'organizer'
+  ) {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
   try {
-    const result = await usersService.updateLastLoginInDB(email, last_login);
+    const result = await usersService.updateLastLoginInDB(identifier, last_login);
     if (!result) {
       return sendResponse(res, 404, { success: false, message: 'User not found' });
     }
@@ -32,14 +36,18 @@ const updateLastLogin = async (req, res) => {
 };
 
 const getUserByEmail = async (req, res) => {
-  const email = req.params.email || req.user.email;
+  const identifier = req.params.id || req.params.email || req.user.email;
 
-  if (req.user.email !== email && req.user.role !== 'organizer') {
+  if (
+    req.user.email !== identifier &&
+    req.user.id !== identifier &&
+    req.user.role !== 'organizer'
+  ) {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
   try {
-    const user = await usersService.findUserByEmailInDB(email);
+    const user = await usersService.findUserByEmailInDB(identifier);
     if (user) {
       return sendResponse(res, 200, { success: true, data: user });
     }
@@ -64,9 +72,13 @@ const getMyProfile = async (req, res) => {
 };
 
 const updateUser = async (req, res) => {
-  const email = req.params.email || req.user.email;
+  const identifier = req.params.id || req.params.email || req.user.email;
 
-  if (req.user.email !== email && req.user.role !== 'organizer') {
+  if (
+    req.user.email !== identifier &&
+    req.user.id !== identifier &&
+    req.user.role !== 'organizer'
+  ) {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
@@ -78,7 +90,7 @@ const updateUser = async (req, res) => {
   if (address !== undefined) updateFields.address = address;
 
   try {
-    const updatedUser = await usersService.updateUserInDB(email, updateFields);
+    const updatedUser = await usersService.updateUserInDB(identifier, updateFields);
     if (!updatedUser) {
       return sendResponse(res, 404, { success: false, message: 'User not found' });
     }
@@ -110,14 +122,18 @@ const updateMyProfile = async (req, res) => {
 };
 
 const getUserRole = async (req, res) => {
-  const email = req.params.email || req.user.email;
+  const identifier = req.params.id || req.params.email || req.user.email;
 
-  if (req.user.email !== email && req.user.role !== 'organizer') {
+  if (
+    req.user.email !== identifier &&
+    req.user.id !== identifier &&
+    req.user.role !== 'organizer'
+  ) {
     return sendResponse(res, 403, { success: false, message: 'Forbidden' });
   }
 
   try {
-    const user = await usersService.findUserByEmailInDB(email);
+    const user = await usersService.findUserByEmailInDB(identifier);
     if (!user) {
       return sendResponse(res, 404, { success: false, message: 'User not found' });
     }
@@ -145,11 +161,11 @@ const getAllUsers = async (req, res, next) => {
 };
 
 const updateUserRole = async (req, res, next) => {
-  const { email } = req.params;
+  const identifier = req.params.id || req.params.email;
   const { role } = req.body;
 
   try {
-    const updatedUser = await usersService.updateUserRoleInDB(email, role);
+    const updatedUser = await usersService.updateUserRoleInDB(identifier, role);
     if (!updatedUser) {
       return sendResponse(res, 404, { success: false, message: 'User not found' });
     }
@@ -164,10 +180,10 @@ const updateUserRole = async (req, res, next) => {
 };
 
 const deleteUser = async (req, res, next) => {
-  const { email } = req.params;
+  const identifier = req.params.id || req.params.email;
 
   try {
-    const deletedUser = await usersService.deleteUserInDB(email);
+    const deletedUser = await usersService.deleteUserInDB(identifier);
     if (!deletedUser) {
       return sendResponse(res, 404, { success: false, message: 'User not found' });
     }

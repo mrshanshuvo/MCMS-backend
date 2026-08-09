@@ -23,17 +23,33 @@ router.get(
   usersController.getAllUsers
 );
 router.patch(
-  '/:email/role',
+  '/:id/role',
   verifyToken,
   verifyOrganizer,
   validate(usersSchema.updateRoleSchema),
   usersController.updateUserRole
 );
 router.delete(
-  '/:email',
+  '/:id',
   verifyToken,
   verifyOrganizer,
-  validate(usersSchema.emailParamSchema),
+  validate(usersSchema.userParamSchema),
+  usersController.deleteUser
+);
+
+// Email parameter aliases
+router.patch(
+  '/email/:email/role',
+  verifyToken,
+  verifyOrganizer,
+  validate(usersSchema.updateRoleSchema),
+  usersController.updateUserRole
+);
+router.delete(
+  '/email/:email',
+  verifyToken,
+  verifyOrganizer,
+  validate(usersSchema.userParamSchema),
   usersController.deleteUser
 );
 
@@ -43,7 +59,7 @@ router.patch('/:email', verifyToken, usersController.updateLastLogin);
 router.get(
   '/:email',
   verifyToken,
-  validate(usersSchema.emailParamSchema),
+  validate(usersSchema.userParamSchema),
   usersController.getUserByEmail
 );
 router.put(
@@ -55,7 +71,7 @@ router.put(
 router.get(
   '/:email/role',
   verifyToken,
-  validate(usersSchema.emailParamSchema),
+  validate(usersSchema.userParamSchema),
   usersController.getUserRole
 );
 
