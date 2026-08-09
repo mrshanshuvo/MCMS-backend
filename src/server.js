@@ -5,7 +5,7 @@ const logger = require('./config/logger');
 // Validate environment variables before boot
 validateEnv();
 
-const { connectDB, client } = require('./config/db');
+const { connectDB, dbConnection } = require('./config/db');
 const app = require('./app');
 
 const PORT = process.env.PORT || 5000;
@@ -22,7 +22,7 @@ async function startServer() {
       server.close(async () => {
         logger.info('HTTP server closed.');
         try {
-          await client.close();
+          await dbConnection.close();
           logger.info('MongoDB connection closed.');
           process.exit(0);
         } catch (err) {

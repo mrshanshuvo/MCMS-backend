@@ -1,5 +1,7 @@
-const { ObjectId } = require('mongodb');
-const { getCollections } = require('../../config/db');
+const Camp = require('./camps.model');
+const Registration = require('../registrations/registrations.model');
+const Payment = require('../payments/payments.model');
+const Feedback = require('../feedback/feedback.model');
 
 const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -15,7 +17,7 @@ const findAllCampsInDB = async ({
 
   const query = {
     $or: [
-      { campName: { $regex: searchRegex } },
+      { name: { $regex: searchRegex } },
       { location: { $regex: searchRegex } },
       { healthcareProfessional: { $regex: searchRegex } },
     ],
@@ -27,27 +29,26 @@ const findAllCampsInDB = async ({
       sortOption = { participantCount: -1 };
       break;
     case 'campFeesAsc':
-      sortOption = { campFees: 1 };
+      sortOption = { fees: 1 };
       break;
     case 'campFeesDesc':
-      sortOption = { campFees: -1 };
+      sortOption = { fees: -1 };
       break;
     case 'alphabetical':
-      sortOption = { campName: 1 };
+      sortOption = { name: 1 };
       break;
     default:
       sortOption = { participantCount: -1 };
   }
 
-  const { campsCollection } = getCollections();
-  const total = await campsCollection.countDocuments(query);
-
-  const camps = await campsCollection
-    .find(query)
-    .sort(sortOption)
-    .skip((pageNum - 1) * limitNum)
-    .limit(limitNum)
-    .toArray();
+  const [total, camps] = await Promise.all([
+    Camp.countDocuments(query),
+    Camp.find(query)
+      .sort(sortOption)
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+  ]);
 
   return {
     camps,
@@ -61,28 +62,26 @@ const findAllCampsInDB = async ({
 };
 
 const findCampByIdInDB = async (campId) => {
-  const { campsCollection } = getCollections();
-  return await campsCollection.findOne({ _id: new ObjectId(campId) });
+  return await Camp.findById(campId).lean();
 };
 
 const createCampInDB = async (campData, organizerEmail) => {
-  const { campsCollection } = getCollections();
-  const newCamp = {
+  return await Camp.create({
     ...campData,
     organizerEmail,
     participantCount: 0,
     createdAt: new Date(),
-  };
-  return await campsCollection.insertOne(newCamp);
+  });
 };
 
 const findOrganizerCampsInDB = async (organizerEmail, page = 1, limit = 5) => {
   const skip = (page - 1) * limit;
   const query = { organizerEmail };
-  const { campsCollection } = getCollections();
 
-  const camps = await campsCollection.find(query).skip(skip).limit(limit).toArray();
-  const totalCount = await campsCollection.countDocuments(query);
+  const [camps, totalCount] = await Promise.all([
+    Camp.find(query).skip(skip).limit(limit).lean(),
+    Camp.countDocuments(query),
+  ]);
 
   return {
     camps,
@@ -96,44 +95,27 @@ const findOrganizerCampsInDB = async (organizerEmail, page = 1, limit = 5) => {
 };
 
 const incrementParticipantCountInDB = async (campId) => {
-  const { campsCollection } = getCollections();
-  return await campsCollection.updateOne(
-    { _id: new ObjectId(campId) },
-    { $inc: { participantCount: 1 } }
-  );
+  return await Camp.findByIdAndUpdate(campId, { $inc: { participantCount: 1 } });
 };
 
 const updateCampInDB = async (campId, organizerEmail, updateFields) => {
-  const { campsCollection } = getCollections();
-
-  const camp = await campsCollection.findOne({
-    _id: new ObjectId(campId),
-    organizerEmail,
-  });
-
+  const camp = await Camp.findOne({ _id: campId, organizerEmail });
   if (!camp) return null;
 
-  return await campsCollection.updateOne({ _id: new ObjectId(campId) }, { $set: updateFields });
+  return await Camp.findByIdAndUpdate(campId, { $set: updateFields }, { new: true });
 };
 
 const deleteCampInDB = async (campId, organizerEmail) => {
-  const { campsCollection, registrationsCollection, paymentsCollection, feedbackCollection } =
-    getCollections();
-
-  const camp = await campsCollection.findOne({
-    _id: new ObjectId(campId),
-    organizerEmail,
-  });
-
+  const camp = await Camp.findOne({ _id: campId, organizerEmail });
   if (!camp) return null;
 
-  const result = await campsCollection.deleteOne({ _id: new ObjectId(campId) });
+  const result = await Camp.findByIdAndDelete(campId);
 
-  if (result.deletedCount > 0) {
+  if (result) {
     await Promise.all([
-      registrationsCollection.deleteMany({ campId: new ObjectId(campId) }),
-      paymentsCollection.deleteMany({ campId: new ObjectId(campId) }),
-      feedbackCollection.deleteMany({ campId: new ObjectId(campId) }),
+      Registration.deleteMany({ campId }),
+      Payment.deleteMany({ campId }),
+      Feedback.deleteMany({ campId }),
     ]);
   }
 
@@ -141,110 +123,105 @@ const deleteCampInDB = async (campId, organizerEmail) => {
 };
 
 const findCampsWithRegistrationsInDB = async (email, page = 1, limit = 5) => {
-  const { campsCollection } = getCollections();
   const skip = (page - 1) * limit;
 
-  const [results, total] = await Promise.all([
-    campsCollection
-      .aggregate([
-        {
-          $lookup: {
-            from: 'registrations',
-            let: { campIdObj: '$_id' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ['$campId', '$$campIdObj'] },
-                      { $eq: ['$participantEmail', email] },
-                    ],
-                  },
+  const [results, totalArr] = await Promise.all([
+    Camp.aggregate([
+      {
+        $lookup: {
+          from: 'registrations',
+          let: { campIdObj: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$campId', '$$campIdObj'] },
+                    { $eq: ['$participantEmail', email] },
+                  ],
                 },
               },
-              {
-                $project: {
-                  _id: 1,
-                  participantName: 1,
-                  paymentStatus: 1,
-                  confirmationStatus: 1,
-                  registrationDate: 1,
+            },
+            {
+              $project: {
+                _id: 1,
+                participantName: 1,
+                paymentStatus: 1,
+                confirmationStatus: 1,
+                registrationDate: 1,
+              },
+            },
+          ],
+          as: 'participants',
+        },
+      },
+      { $match: { 'participants.0': { $exists: true } } },
+      {
+        $lookup: {
+          from: 'feedback',
+          let: { campIdObj: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$campId', '$$campIdObj'] },
+                    { $eq: ['$participantEmail', email] },
+                  ],
                 },
               },
-            ],
-            as: 'participants',
-          },
+            },
+            { $limit: 1 },
+          ],
+          as: 'userFeedback',
         },
-        { $match: { 'participants.0': { $exists: true } } },
-        {
-          $lookup: {
-            from: 'feedback',
-            let: { campIdObj: '$_id' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ['$campId', '$$campIdObj'] },
-                      { $eq: ['$participantEmail', email] },
-                    ],
-                  },
+      },
+      {
+        $addFields: {
+          hasFeedback: { $gt: [{ $size: '$userFeedback' }, 0] },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          dateTime: 1,
+          location: 1,
+          fees: 1,
+          healthcareProfessional: 1,
+          participants: 1,
+          hasFeedback: 1,
+        },
+      },
+      { $skip: skip },
+      { $limit: limit },
+    ]),
+    Camp.aggregate([
+      {
+        $lookup: {
+          from: 'registrations',
+          let: { campIdObj: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$campId', '$$campIdObj'] },
+                    { $eq: ['$participantEmail', email] },
+                  ],
                 },
               },
-              { $limit: 1 },
-            ],
-            as: 'userFeedback',
-          },
+            },
+          ],
+          as: 'participants',
         },
-        {
-          $addFields: {
-            hasFeedback: { $gt: [{ $size: '$userFeedback' }, 0] },
-          },
-        },
-        {
-          $project: {
-            _id: 1,
-            name: 1,
-            dateTime: 1,
-            location: 1,
-            fees: 1,
-            healthcareProfessional: 1,
-            participants: 1,
-            hasFeedback: 1,
-          },
-        },
-        { $skip: skip },
-        { $limit: limit },
-      ])
-      .toArray(),
-    campsCollection
-      .aggregate([
-        {
-          $lookup: {
-            from: 'registrations',
-            let: { campIdObj: '$_id' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ['$campId', '$$campIdObj'] },
-                      { $eq: ['$participantEmail', email] },
-                    ],
-                  },
-                },
-              },
-            ],
-            as: 'participants',
-          },
-        },
-        { $match: { 'participants.0': { $exists: true } } },
-        { $count: 'total' },
-      ])
-      .toArray(),
+      },
+      { $match: { 'participants.0': { $exists: true } } },
+      { $count: 'total' },
+    ]),
   ]);
 
-  const totalCount = total[0]?.total || 0;
+  const totalCount = totalArr[0]?.total || 0;
 
   return {
     results,

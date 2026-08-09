@@ -1,5 +1,6 @@
-const { ObjectId } = require('mongodb');
-const { getCollections, client } = require('../../config/db');
+const mongoose = require('mongoose');
+const Registration = require('../registrations/registrations.model');
+const Payment = require('./payments.model');
 
 let stripeInstance;
 const getStripe = () => {
@@ -16,30 +17,27 @@ const createPaymentIntentInDB = async (amount, campId, participantEmail) => {
   return await stripe.paymentIntents.create({
     amount: amount * 100,
     currency: 'usd',
-    metadata: { campId, participantEmail },
+    metadata: { campId: campId.toString(), participantEmail },
   });
 };
 
 const processPaymentInDB = async (paymentData, userEmail) => {
   const { campId, registrationId, transactionId, amount, paymentMethod } = paymentData;
-  const { registrationsCollection, paymentsCollection } = getCollections();
-  const session = client.startSession();
+  const session = await mongoose.connection.startSession();
 
   try {
     await session.withTransaction(async () => {
-      const registration = await registrationsCollection.findOne(
-        {
-          _id: new ObjectId(registrationId),
-          participantEmail: userEmail,
-        },
+      const registration = await Registration.findOne(
+        { _id: registrationId, participantEmail: userEmail },
+        null,
         { session }
       );
 
       if (!registration) throw new Error('Registration not found');
       if (registration.paymentStatus === 'Paid') throw new Error('Payment already processed');
 
-      await registrationsCollection.updateOne(
-        { _id: registration._id },
+      await Registration.findByIdAndUpdate(
+        registration._id,
         {
           $set: {
             paymentStatus: 'Paid',
@@ -50,17 +48,19 @@ const processPaymentInDB = async (paymentData, userEmail) => {
         { session }
       );
 
-      await paymentsCollection.insertOne(
-        {
-          campId: new ObjectId(campId),
-          registrationId: new ObjectId(registrationId),
-          participantEmail: userEmail,
-          transactionId,
-          amount,
-          paymentMethod,
-          paymentDate: new Date(),
-          status: 'Completed',
-        },
+      await Payment.create(
+        [
+          {
+            campId,
+            registrationId,
+            participantEmail: userEmail,
+            transactionId,
+            amount,
+            paymentMethod,
+            paymentDate: new Date(),
+            status: 'Completed',
+          },
+        ],
         { session }
       );
     });
@@ -88,15 +88,11 @@ const processPaymentInDB = async (paymentData, userEmail) => {
 const findPaymentsInDB = async (userEmail, page = 1, limit = 5) => {
   const skip = (page - 1) * limit;
   const query = { participantEmail: userEmail };
-  const { paymentsCollection } = getCollections();
 
-  const total = await paymentsCollection.countDocuments(query);
-  const payments = await paymentsCollection
-    .find(query)
-    .sort({ paymentDate: -1 })
-    .skip(skip)
-    .limit(limit)
-    .toArray();
+  const [total, payments] = await Promise.all([
+    Payment.countDocuments(query),
+    Payment.find(query).sort({ paymentDate: -1 }).skip(skip).limit(limit).lean(),
+  ]);
 
   return {
     data: payments,
@@ -111,8 +107,7 @@ const findPaymentsInDB = async (userEmail, page = 1, limit = 5) => {
 
 const findPaymentsByEmailInDB = async (email) => {
   const filter = email ? { participantEmail: email } : {};
-  const { paymentsCollection } = getCollections();
-  return await paymentsCollection.find(filter).sort({ payment_time: -1 }).toArray();
+  return await Payment.find(filter).sort({ paymentDate: -1 }).lean();
 };
 
 const processStripeWebhookEvent = async (reqBody, sig) => {
@@ -122,11 +117,10 @@ const processStripeWebhookEvent = async (reqBody, sig) => {
   if (event.type === 'payment_intent.succeeded') {
     const paymentIntent = event.data.object;
     const { campId, participantEmail } = paymentIntent.metadata;
-    const { registrationsCollection } = getCollections();
 
-    await registrationsCollection.updateOne(
+    await Registration.findOneAndUpdate(
       {
-        campId: new ObjectId(campId),
+        campId,
         participantEmail,
         transactionId: paymentIntent.id,
       },

@@ -1,5 +1,5 @@
 const admin = require('../config/firebase');
-const { getCollections } = require('../config/db');
+const User = require('../modules/users/users.model');
 const sendResponse = require('../utils/response');
 
 const verifyFBToken = async (req, res, next) => {
@@ -25,8 +25,7 @@ const verifyOrganizer = async (req, res, next) => {
       return next();
     }
 
-    const { usersCollection } = getCollections();
-    const user = await usersCollection.findOne({ email: req.user.email });
+    const user = await User.findOne({ email: req.user.email });
     if (user?.role !== 'organizer') {
       return sendResponse(res, 403, { success: false, message: 'Organizer access required' });
     }
@@ -45,8 +44,7 @@ const verifyParticipant = async (req, res, next) => {
       return next();
     }
 
-    const { usersCollection } = getCollections();
-    const user = await usersCollection.findOne({ email: req.user.email });
+    const user = await User.findOne({ email: req.user.email });
     if (user?.role !== 'participant') {
       return sendResponse(res, 403, { success: false, message: 'Participant access required' });
     }

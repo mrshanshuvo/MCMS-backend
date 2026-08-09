@@ -1,38 +1,28 @@
-const { getCollections } = require('../../config/db');
+const User = require('./users.model');
 
 const upsertUserInDB = async (userData) => {
   const { email, name, photoURL, created_at, last_login } = userData;
-  const updateDoc = {
-    $setOnInsert: {
-      name,
-      photoURL,
-      role: 'participant',
-      created_at,
+
+  return await User.findOneAndUpdate(
+    { email },
+    {
+      $setOnInsert: { name, photoURL, role: 'participant', created_at },
+      $set: { last_login },
     },
-    $set: {
-      last_login,
-    },
-  };
-  const { usersCollection } = getCollections();
-  return await usersCollection.updateOne({ email }, updateDoc, { upsert: true });
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
 };
 
 const updateLastLoginInDB = async (email, last_login) => {
-  const { usersCollection } = getCollections();
-  return await usersCollection.updateOne({ email }, { $set: { last_login } });
+  return await User.findOneAndUpdate({ email }, { $set: { last_login } });
 };
 
 const findUserByEmailInDB = async (email) => {
-  const { usersCollection } = getCollections();
-  return await usersCollection.findOne({ email });
+  return await User.findOne({ email });
 };
 
 const updateUserInDB = async (email, updateFields) => {
-  const { usersCollection } = getCollections();
-  const updateDoc = { $set: updateFields };
-  const result = await usersCollection.updateOne({ email }, updateDoc);
-  if (result.matchedCount === 0) return null;
-  return await usersCollection.findOne({ email });
+  return await User.findOneAndUpdate({ email }, { $set: updateFields }, { new: true });
 };
 
 module.exports = {

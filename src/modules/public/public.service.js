@@ -1,18 +1,17 @@
-const { getCollections } = require('../../config/db');
+const SuccessStory = require('./success-story.model');
+const Faq = require('./faq.model');
+const Blog = require('./blog.model');
 
 const findSuccessStoriesInDB = async () => {
-  const { successStoriesCollection } = getCollections();
-  return await successStoriesCollection.find().toArray();
+  return await SuccessStory.find().lean();
 };
 
 const findFaqsInDB = async () => {
-  const { faqCollection } = getCollections();
-  return await faqCollection.find().toArray();
+  return await Faq.find().lean();
 };
 
 const findBlogsInDB = async () => {
-  const { blogCollection } = getCollections();
-  return await blogCollection.find().toArray();
+  return await Blog.find().lean();
 };
 
 module.exports = {

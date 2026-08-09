@@ -1,12 +1,11 @@
 require('dotenv').config();
-const { connectDB, getCollections } = require('../config/db');
+const { connectDB, dbConnection } = require('../config/db');
+const User = require('../modules/users/users.model');
 
 async function seedDemoUsers() {
   try {
     console.log('Connecting to MongoDB...');
     await connectDB();
-
-    const { usersCollection } = getCollections();
 
     const demoUsers = [
       {
@@ -32,11 +31,16 @@ async function seedDemoUsers() {
     ];
 
     for (const user of demoUsers) {
-      await usersCollection.updateOne({ email: user.email }, { $set: user }, { upsert: true });
+      await User.findOneAndUpdate(
+        { email: user.email },
+        { $set: user },
+        { upsert: true, new: true }
+      );
       console.log(`Demo user upserted: ${user.email} (${user.role})`);
     }
 
     console.log('Demo users seed completed successfully.');
+    await dbConnection.close();
     process.exit(0);
   } catch (error) {
     console.error('Seed demo users failed:', error);

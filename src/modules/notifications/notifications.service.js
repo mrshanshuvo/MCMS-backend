@@ -1,13 +1,11 @@
-const { ObjectId } = require('mongodb');
-const { getCollections } = require('../../config/db');
+const Notification = require('./notifications.model');
 
 const createNotification = async ({ userEmail, title, message, type, link }) => {
-  const { notificationsCollection } = getCollections();
-  return await notificationsCollection.insertOne({
+  return await Notification.create({
     userEmail,
     title,
     message,
-    type, // 'registration', 'payment', 'system'
+    type,
     link: link || '',
     read: false,
     createdAt: new Date(),
@@ -27,16 +25,11 @@ const findUserNotificationsInDB = async (
     query.read = false;
   }
 
-  const { notificationsCollection } = getCollections();
-  const total = await notificationsCollection.countDocuments(query);
-  const unreadCount = await notificationsCollection.countDocuments({ userEmail, read: false });
-
-  const notifications = await notificationsCollection
-    .find(query)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limitNum)
-    .toArray();
+  const [total, unreadCount, notifications] = await Promise.all([
+    Notification.countDocuments(query),
+    Notification.countDocuments({ userEmail, read: false }),
+    Notification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+  ]);
 
   return {
     notifications,
@@ -51,19 +44,15 @@ const findUserNotificationsInDB = async (
 };
 
 const markNotificationReadInDB = async (notificationId, userEmail) => {
-  const { notificationsCollection } = getCollections();
-  return await notificationsCollection.updateOne(
-    { _id: new ObjectId(notificationId), userEmail },
-    { $set: { read: true } }
+  return await Notification.findOneAndUpdate(
+    { _id: notificationId, userEmail },
+    { $set: { read: true } },
+    { new: true }
   );
 };
 
 const markAllNotificationsReadInDB = async (userEmail) => {
-  const { notificationsCollection } = getCollections();
-  return await notificationsCollection.updateMany(
-    { userEmail, read: false },
-    { $set: { read: true } }
-  );
+  return await Notification.updateMany({ userEmail, read: false }, { $set: { read: true } });
 };
 
 module.exports = {
