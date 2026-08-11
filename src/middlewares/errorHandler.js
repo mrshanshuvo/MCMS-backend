@@ -1,16 +1,19 @@
 const notFoundHandler = (req, res) => {
   res.status(404).json({
     success: false,
-    error: 'Route not found',
+    message: 'Route not found',
   });
 };
 
 const globalErrorHandler = (err, req, res, _next) => {
   console.error(err.stack);
-  res.status(500).json({
+  const statusCode = err.statusCode || err.status || 500;
+  const message = err.message || 'Internal server error';
+
+  res.status(statusCode).json({
     success: false,
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
 
