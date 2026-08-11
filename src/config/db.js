@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
 const logger = require('./logger');
+
+// Set public DNS servers fallback for Windows SRV queries
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {
+  // Ignore DNS setServers error if not supported in environment
+}
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
