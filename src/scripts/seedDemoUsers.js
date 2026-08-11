@@ -1,4 +1,5 @@
 require('dotenv').config();
+const bcrypt = require('bcryptjs');
 const { connectDB, dbConnection } = require('../config/db');
 const User = require('../modules/users/users.model');
 
@@ -7,9 +8,12 @@ async function seedDemoUsers() {
     console.log('Connecting to MongoDB...');
     await connectDB();
 
+    const defaultPassword = await bcrypt.hash('Password123!', 10);
+
     const demoUsers = [
       {
         email: 'organizer@carecamp.com',
+        password: defaultPassword,
         name: 'Demo Organizer',
         photoURL: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150',
         role: 'organizer',
@@ -20,6 +24,7 @@ async function seedDemoUsers() {
       },
       {
         email: 'participant@carecamp.com',
+        password: defaultPassword,
         name: 'Demo Participant',
         photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
         role: 'participant',
