@@ -2,7 +2,7 @@ const Feedback = require('./feedback.model');
 const Registration = require('../registrations/registrations.model');
 
 const submitFeedbackInDB = async (feedbackData, userEmail) => {
-  const { campId, rating, feedback, name, photoURL } = feedbackData;
+  const { campId, rating, feedback, name, photoURL, images } = feedbackData;
 
   const registration = await Registration.findOne({
     campId,
@@ -22,6 +22,7 @@ const submitFeedbackInDB = async (feedbackData, userEmail) => {
     participantPhotoURL: photoURL,
     rating,
     feedback,
+    images: Array.isArray(images) ? images : [],
     date: new Date(),
   });
 
@@ -44,6 +45,7 @@ const findFeedbackInDB = async (limit = 5) => {
         _id: 1,
         rating: 1,
         feedback: 1,
+        images: 1,
         date: 1,
         participantName: 1,
         participantPhotoURL: 1,

@@ -8,6 +8,7 @@ const feedbackSchema = new mongoose.Schema(
     participantPhotoURL: { type: String },
     rating: { type: Number, required: true, min: 1, max: 5 },
     feedback: { type: String, required: true },
+    images: { type: [String], default: [] },
     date: { type: Date, default: Date.now },
   },
   { collection: 'feedback', versionKey: false }

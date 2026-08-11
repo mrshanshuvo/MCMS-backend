@@ -10,6 +10,7 @@ const submitFeedbackSchema = {
     feedback: z.string().min(1, 'Feedback text is required'),
     name: z.string().optional(),
     photoURL: z.string().optional(),
+    images: z.array(z.string()).optional(),
   }),
 };
 
