@@ -5,9 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "db:seed": "node src/scripts/seedIndexes.js",
-    "seed:users": "node src/scripts/seedDemoUsers.js",
-    "seed:data": "node src/scripts/seedAll.js",
+    "seed": "node src/scripts/seed.js",
+    "db:seed": "node src/scripts/seed.js",
+    "seed:users": "node src/scripts/seed.js",
+    "seed:data": "node src/scripts/seed.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

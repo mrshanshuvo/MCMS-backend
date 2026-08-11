@@ -12,7 +12,7 @@ const SuccessStory = require('../modules/public/success-story.model');
 const Faq = require('../modules/public/faq.model');
 const Blog = require('../modules/public/blog.model');
 
-async function seedAllData() {
+async function seedMasterData() {
   try {
     console.log('Connecting to database for master seeding...');
     await connectDB();
@@ -1026,4 +1026,4 @@ async function seedAllData() {
   }
 }
 
-seedAllData();
+seedMasterData();
