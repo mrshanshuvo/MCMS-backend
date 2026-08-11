@@ -11,6 +11,8 @@ router.get(
   verifyOrganizer,
   analyticsController.getOrganizerOverview
 );
+router.get('/overview', verifyFBToken, verifyOrganizer, analyticsController.getOrganizerOverview);
+router.get('/charts', verifyFBToken, verifyOrganizer, analyticsController.getOrganizerOverview);
 router.get(
   '/export/registrations',
   verifyFBToken,

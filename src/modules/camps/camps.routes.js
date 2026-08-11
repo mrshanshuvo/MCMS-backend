@@ -4,44 +4,88 @@ const campsController = require('./camps.controller');
 const campsSchema = require('./camps.schema');
 const validate = require('../../middlewares/validate.middleware');
 const {
-  verifyFBToken,
+  verifyToken,
   verifyOrganizer,
   verifyParticipant,
 } = require('../../middlewares/auth.middleware');
 
+// Public listing & single item routes
 router.get('/camps', campsController.getCamps);
+router.get('/items', campsController.getCamps);
 router.get('/camps/:id', validate(campsSchema.idParamSchema), campsController.getCampById);
+router.get('/items/:id', validate(campsSchema.idParamSchema), campsController.getCampById);
+
+// Admin/Organizer mutation routes (POST, PUT, PATCH, DELETE)
 router.post(
   '/camps',
-  verifyFBToken,
+  verifyToken,
   verifyOrganizer,
   validate(campsSchema.createCampSchema),
   campsController.addCamp
 );
-router.patch(
+router.post(
+  '/items',
+  verifyToken,
+  verifyOrganizer,
+  validate(campsSchema.createCampSchema),
+  campsController.addCamp
+);
+
+router.put(
   '/camps/:campId',
-  verifyFBToken,
+  verifyToken,
+  verifyOrganizer,
+  validate(campsSchema.updateCampSchema),
+  campsController.updateCamp
+);
+router.put(
+  '/items/:campId',
+  verifyToken,
   verifyOrganizer,
   validate(campsSchema.updateCampSchema),
   campsController.updateCamp
 );
 router.patch(
-  '/camps/:id/increment',
-  verifyFBToken,
-  validate(campsSchema.idParamSchema),
-  campsController.incrementParticipantCount
+  '/camps/:campId',
+  verifyToken,
+  verifyOrganizer,
+  validate(campsSchema.updateCampSchema),
+  campsController.updateCamp
 );
+
 router.delete(
-  '/delete-camp/:campId',
-  verifyFBToken,
+  '/camps/:campId',
+  verifyToken,
   verifyOrganizer,
   validate(campsSchema.campIdParamSchema),
   campsController.deleteCamp
 );
-router.get('/organizer/camps', verifyFBToken, verifyOrganizer, campsController.getOrganizerCamps);
+router.delete(
+  '/items/:campId',
+  verifyToken,
+  verifyOrganizer,
+  validate(campsSchema.campIdParamSchema),
+  campsController.deleteCamp
+);
+router.delete(
+  '/delete-camp/:campId',
+  verifyToken,
+  verifyOrganizer,
+  validate(campsSchema.campIdParamSchema),
+  campsController.deleteCamp
+);
+
+// Participant & organizer specialized routes
+router.patch(
+  '/camps/:id/increment',
+  verifyToken,
+  validate(campsSchema.idParamSchema),
+  campsController.incrementParticipantCount
+);
+router.get('/organizer/camps', verifyToken, verifyOrganizer, campsController.getOrganizerCamps);
 router.get(
   '/camps-with-registrations/:email',
-  verifyFBToken,
+  verifyToken,
   verifyParticipant,
   campsController.getCampsWithRegistrations
 );

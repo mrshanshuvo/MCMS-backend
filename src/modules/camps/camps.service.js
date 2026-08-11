@@ -10,32 +10,62 @@ const findAllCampsInDB = async ({
   sort = 'participantCount',
   page = '1',
   limit = '6',
+  location = '',
+  healthcareProfessional = '',
+  category = '',
+  minFees,
+  maxFees,
 }) => {
-  const pageNum = parseInt(page, 10);
-  const limitNum = parseInt(limit, 10);
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 6, 1), 100);
   const searchRegex = new RegExp(escapeRegex(search), 'i');
 
-  const query = {
-    $or: [
+  const query = {};
+
+  if (search) {
+    query.$or = [
       { name: { $regex: searchRegex } },
       { location: { $regex: searchRegex } },
       { healthcareProfessional: { $regex: searchRegex } },
-    ],
-  };
+    ];
+  }
+
+  if (location) {
+    query.location = { $regex: new RegExp(escapeRegex(location), 'i') };
+  }
+
+  const profFilter = healthcareProfessional || category;
+  if (profFilter) {
+    query.healthcareProfessional = { $regex: new RegExp(escapeRegex(profFilter), 'i') };
+  }
+
+  if (minFees !== undefined || maxFees !== undefined) {
+    query.fees = {};
+    if (minFees !== undefined && minFees !== '') query.fees.$gte = Number(minFees);
+    if (maxFees !== undefined && maxFees !== '') query.fees.$lte = Number(maxFees);
+  }
 
   let sortOption;
   switch (sort) {
     case 'participantCount':
+    case 'popularity':
       sortOption = { participantCount: -1 };
       break;
     case 'campFeesAsc':
+    case 'priceAsc':
       sortOption = { fees: 1 };
       break;
     case 'campFeesDesc':
+    case 'priceDesc':
       sortOption = { fees: -1 };
       break;
     case 'alphabetical':
+    case 'name':
       sortOption = { name: 1 };
+      break;
+    case 'newest':
+    case 'createdAtDesc':
+      sortOption = { createdAt: -1 };
       break;
     default:
       sortOption = { participantCount: -1 };
@@ -99,14 +129,20 @@ const incrementParticipantCountInDB = async (campId) => {
 };
 
 const updateCampInDB = async (campId, organizerEmail, updateFields) => {
-  const camp = await Camp.findOne({ _id: campId, organizerEmail });
+  const query = { _id: campId };
+  if (organizerEmail) query.organizerEmail = organizerEmail;
+
+  const camp = await Camp.findOne(query);
   if (!camp) return null;
 
   return await Camp.findByIdAndUpdate(campId, { $set: updateFields }, { new: true });
 };
 
 const deleteCampInDB = async (campId, organizerEmail) => {
-  const camp = await Camp.findOne({ _id: campId, organizerEmail });
+  const query = { _id: campId };
+  if (organizerEmail) query.organizerEmail = organizerEmail;
+
+  const camp = await Camp.findOne(query);
   if (!camp) return null;
 
   const result = await Camp.findByIdAndDelete(campId);
