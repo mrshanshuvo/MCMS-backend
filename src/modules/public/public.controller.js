@@ -40,8 +40,24 @@ const getBlogs = async (req, res) => {
   }
 };
 
+const submitContactMessage = async (req, res) => {
+  try {
+    return sendResponse(res, 200, {
+      success: true,
+      message: 'Contact message received successfully',
+    });
+  } catch (error) {
+    console.error('Error submitting contact message:', error);
+    return sendResponse(res, 500, {
+      success: false,
+      message: 'Failed to submit contact message',
+    });
+  }
+};
+
 module.exports = {
   getSuccessStories,
   getFaqs,
   getBlogs,
+  submitContactMessage,
 };
