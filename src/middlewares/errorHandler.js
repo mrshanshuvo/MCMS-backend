@@ -1,3 +1,5 @@
+const logger = require('../config/logger');
+
 const notFoundHandler = (req, res) => {
   res.status(404).json({
     success: false,
@@ -6,7 +8,7 @@ const notFoundHandler = (req, res) => {
 };
 
 const globalErrorHandler = (err, req, res, _next) => {
-  console.error(err.stack);
+  logger.error(err.stack || err.message);
   const statusCode = err.statusCode || err.status || 500;
   const message = err.message || 'Internal server error';
 
