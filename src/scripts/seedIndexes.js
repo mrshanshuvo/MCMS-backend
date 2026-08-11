@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { connectDB } = require('./config/db');
+const { connectDB } = require('../config/db');
 
 async function seedIndexes() {
   try {
