@@ -36,16 +36,18 @@ npm run seed:users
 ```
 
 ### Demo Accounts:
-| Role | Email | Password | Access Rights |
-| :--- | :--- | :--- | :--- |
-| **Organizer / Admin** | `organizer@carecamp.com` | `Password123!` | Full camp management, analytics, user management |
-| **Participant** | `participant@carecamp.com` | `Password123!` | Registrations, payments, feedback |
+
+| Role                  | Email                      | Password       | Access Rights                                    |
+| :-------------------- | :------------------------- | :------------- | :----------------------------------------------- |
+| **Organizer / Admin** | `organizer@carecamp.com`   | `Password123!` | Full camp management, analytics, user management |
+| **Participant**       | `participant@carecamp.com` | `Password123!` | Registrations, payments, feedback                |
 
 ---
 
 ## API Route Quick Reference
 
 ### Authentication & Users
+
 - `POST /api/auth/register` — Register user account
 - `POST /api/auth/login` — Authenticate and receive JWT token
 - `GET /api/users/profile` — Get current user profile
@@ -55,6 +57,7 @@ npm run seed:users
 - `DELETE /api/users/:id` — Delete user account
 
 ### Camps / Items
+
 - `GET /api/camps` (or `/api/items`) — List camps (search, filter, sort, paginate)
 - `GET /api/camps/:id` — Get camp details by ID
 - `POST /api/camps` — Create camp (Organizer/Admin only)
@@ -62,12 +65,14 @@ npm run seed:users
 - `DELETE /api/camps/:campId` — Delete camp (Organizer/Admin only)
 
 ### Analytics & Exports
+
 - `GET /api/analytics/overview` — Dashboard summary metrics
 - `GET /api/analytics/charts` — Aggregated chart datasets
 - `GET /api/analytics/export/registrations` — Download registrations as CSV
 - `GET /api/analytics/export/payments` — Download payments as CSV
 
 ### Public & Support
+
 - `POST /api/contact` — Submit contact form message
 - `GET /api/successStories` — Public success stories
 - `GET /api/faqs` — Public FAQ list
@@ -78,23 +83,27 @@ npm run seed:users
 ## Setup & Installation
 
 1. **Clone Repository**:
+
    ```bash
    git clone https://github.com/mrshanshuvo/MCMS-backend.git
    cd MCMS-backend
    ```
 
 2. **Install Dependencies**:
+
    ```bash
    npm install
    ```
 
 3. **Configure Environment Variables**:
    Copy `.env.example` to `.env` and fill in your MongoDB URI and JWT Secret:
+
    ```bash
    cp .env.example .env
    ```
 
 4. **Seed Database**:
+
    ```bash
    npm run seed:users
    ```
