@@ -27,6 +27,7 @@ const updateCampSchema = {
     healthcareProfessional: z.string().optional(),
     description: z.string().optional(),
     image: z.string().optional(),
+    imageURL: z.string().optional(),
   }),
 };
 

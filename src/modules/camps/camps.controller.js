@@ -79,7 +79,8 @@ const incrementParticipantCount = async (req, res) => {
 const updateCamp = async (req, res) => {
   try {
     const { campId } = req.params;
-    const { name, location, fees, dateTime, healthcareProfessional, description, image } = req.body;
+    const { name, location, fees, dateTime, healthcareProfessional, description, image, imageURL } =
+      req.body;
 
     const updateFields = {};
     if (name !== undefined) updateFields.name = name;
@@ -89,22 +90,31 @@ const updateCamp = async (req, res) => {
     if (healthcareProfessional !== undefined)
       updateFields.healthcareProfessional = healthcareProfessional;
     if (description !== undefined) updateFields.description = description;
-    if (image !== undefined) updateFields.image = image;
 
-    const result = await campsService.updateCampInDB(campId, req.user.email, updateFields);
+    const finalImage = imageURL || image;
+    if (finalImage !== undefined) {
+      updateFields.image = finalImage;
+      updateFields.imageURL = finalImage;
+    }
+
+    const result = await campsService.updateCampInDB(
+      campId,
+      req.user?.role === 'organizer' ? null : req.user?.email,
+      updateFields
+    );
 
     if (!result) {
       return sendResponse(res, 404, {
         success: false,
-        message: 'Camp not found or not owned by organizer',
+        message: 'Camp not found',
       });
     }
 
-    if (result.modifiedCount > 0) {
-      return sendResponse(res, 200, { success: true });
-    } else {
-      return sendResponse(res, 200, { success: false, message: 'Camp not found or no changes' });
-    }
+    return sendResponse(res, 200, {
+      success: true,
+      message: 'Camp updated successfully',
+      data: result,
+    });
   } catch (error) {
     console.error('Error updating camp:', error);
     return sendResponse(res, 500, { success: false, message: error.message });
